@@ -39,7 +39,7 @@ async function hashFile(path, encoding) {
   return hash.digest();
 }
 
-export async function packageWebBuild(directory, { optionalPaths = [] } = {}) {
+export async function packageWebBuild(directory, { optionalPaths = [], chunkBytes = 0 } = {}) {
   const root = resolve(directory);
   if (!(await lstat(root)).isDirectory()) throw new Error('Build directory is required');
   const paths = await inventory(root);
@@ -58,6 +58,7 @@ export async function packageWebBuild(directory, { optionalPaths = [] } = {}) {
   }
   const optional = new Set(optionalPaths);
   const files = [];
+  const virtualFiles = [];
   for (const path of paths) {
     const full = join(root, path);
     const encoding = path.endsWith('.gz') ? 'gzip' : path.endsWith('.br') ? 'br' : null;
@@ -69,13 +70,28 @@ export async function packageWebBuild(directory, { optionalPaths = [] } = {}) {
       const decoder = encoding === 'gzip' ? createGunzip() : createBrotliDecompress();
       for await (const chunk of createReadStream(full).pipe(decoder)) responseBytes += chunk.length;
     }
+    if (chunkBytes && !encoding && /^Build\/.+\.(data|wasm)$/.test(path) && responseBytes > chunkBytes) {
+      const parts = [];
+      for await (const bytes of createReadStream(full, { highWaterMark: chunkBytes })) {
+        const part = path + '.part' + String(parts.length).padStart(3, '0');
+        await writeFile(join(root, part), bytes);
+        const hash = createHash('sha256').update(bytes).digest();
+        const url = part.split('/').map(encodeURIComponent).join('/');
+        files.push({path:part,url,transferBytes:bytes.length,responseBytes:bytes.length,
+          contentEncoding:null,sha256:hash.toString('hex'),integrity:'sha256-'+hash.toString('base64'),required:true});
+        parts.push(url);
+      }
+      virtualFiles.push({path,url:path.split('/').map(encodeURIComponent).join('/'),parts,responseBytes,
+        contentType:path.endsWith('.wasm')?'application/wasm':'application/octet-stream'});
+      continue;
+    }
     files.push({ path, url: path.split('/').map(encodeURIComponent).join('/'),
       transferBytes: (await lstat(full)).size, responseBytes, contentEncoding: encoding,
       sha256: encodedHash.toString('hex'), integrity: 'sha256-' + responseHash.toString('base64'),
       required: !optional.has(path) });
   }
   const worker = await readFile(workerPath, 'utf8');
-  const identity = { schemaVersion: 1, workerDigest: digest(worker), files };
+  const identity = { schemaVersion: 1, workerDigest: digest(worker), files, ...(virtualFiles.length ? {virtualFiles} : {}) };
   const manifest = { ...identity, version: digest(JSON.stringify(identity)).slice(0, 24),
     totalTransferBytes: files.reduce((sum, file) => sum + file.transferBytes, 0),
     requiredTransferBytes: files.filter(file => file.required).reduce((sum, file) => sum + file.transferBytes, 0) };

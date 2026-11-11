@@ -1,5 +1,5 @@
 // Assemble chunked deployment inputs and decode gzip for static hosts without custom headers.
-import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,unlink} from 'node:fs/promises';
 import {createWriteStream} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {createGunzip} from 'node:zlib';
@@ -35,8 +35,11 @@ for(const file of manifest.files) {
 }
 let html=await readFile(path.join(out,'index.html'),'utf8');
 for(const file of manifest.files.filter(f=>f.contentEncoding==='gzip'))html=html.replaceAll(file.path,file.path.replace(/\.gz$/,''));
+html=html.replace('window.unityBuild = {','window.unityBuild = { requiresWorker: true,');
 await writeFile(path.join(out,'index.html'),html);
-const release=await packageWebBuild(out);
+const release=await packageWebBuild(out,{chunkBytes:8*1024*1024});
+// Only remove the freshly assembled originals after their verified parts are published.
+for(const file of release.virtualFiles || []) await unlink(path.join(out,file.path));
 if(release.totalTransferBytes>=1024**3)throw Error('Site exceeds GitHub Pages 1 GiB limit');
 await writeFile(path.join(out,'.nojekyll'),'');
 console.log(JSON.stringify({sourceVersion:manifest.sourceVersion,version:release.version,files:release.files.length,bytes:release.totalTransferBytes}));

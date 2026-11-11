@@ -26,6 +26,7 @@
       <progress id="load-progress" max="1" value="0" aria-label="Tiến trình tải game" hidden></progress>
       <button id="play-button" type="button">Chơi</button>
       <button id="retry-button" type="button" hidden>Thử tải lại</button>
+      <details id="load-error-details" hidden><summary>Chi tiết lỗi</summary><pre id="load-error-message"></pre></details>
       <p class="hint">Xoay ngang iPhone để có thêm không gian thao tác.</p>
     </div>
   </section>
@@ -61,6 +62,8 @@
       <p class="hint">Khi đang ngắm súng, bấm Menu vật để hạ súng.</p>
       <p class="hint">Việt hóa trong game: Hyu — mod VietnameseTranslation.</p>
       <p id="offline-status" role="status" aria-live="polite">Đang kiểm tra khả năng chơi offline…</p>
+      <progress id="offline-progress" max="1" value="0" aria-label="Tiến trình tải offline" hidden></progress>
+      <p id="offline-transfer" role="status" hidden></p>
       <button id="offline-button" type="button" disabled>Tải để chơi offline</button>
       <p id="install-tip">Để mở như ứng dụng: Chia sẻ → Thêm vào Màn hình chính.</p>
       <p id="update-tip" hidden>Có bản cập nhật. Hãy lưu trong game, rồi đóng mọi cửa sổ game và mở lại.</p>

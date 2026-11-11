@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "6a2154cb403ebf45ba9091c1",
+  "sourceVersion": "f86e287a1049d102c30b1192",
   "files": [
     {
       "path": "Build/iphone-pwa-v5-settings-20261109.data.gz",
@@ -464,17 +464,17 @@
     {
       "path": "index.html",
       "url": "index.html",
-      "transferBytes": 7151,
-      "responseBytes": 7151,
+      "transferBytes": 7451,
+      "responseBytes": 7451,
       "contentEncoding": null,
-      "sha256": "703d63918980e8393f437b1b2295dda85de520f66872e6a7ae91c1ec805e03e8",
-      "integrity": "sha256-cD1jkYmA6Dk/Q3sbIpXdqF3lIPZocuanrpHB7IBeA+g=",
+      "sha256": "0417dfcd65281c6d2b817a5f33f8e7ae874beee627491140e63bf4fac10b5c8d",
+      "integrity": "sha256-BBffzWUoHG0rgXpfM/jnrodL7uYnSRFA5jv0+sELXI0=",
       "required": true,
       "parts": [
         {
           "path": "payload/025-000.part",
-          "sha256": "703d63918980e8393f437b1b2295dda85de520f66872e6a7ae91c1ec805e03e8",
-          "bytes": 7151
+          "sha256": "0417dfcd65281c6d2b817a5f33f8e7ae874beee627491140e63bf4fac10b5c8d",
+          "bytes": 7451
         }
       ]
     },
@@ -549,34 +549,34 @@
     {
       "path": "shell.css",
       "url": "shell.css",
-      "transferBytes": 7778,
-      "responseBytes": 7778,
+      "transferBytes": 8107,
+      "responseBytes": 8107,
       "contentEncoding": null,
-      "sha256": "49dfb6c1ab5d2e253465c134624cfb1a3a022fbe8627163d6824b41b28b71a6f",
-      "integrity": "sha256-Sd+2watdLiU0ZcE0Ykz7GjoCL76GJxY9aCS0Gyi3Gm8=",
+      "sha256": "2441e895ae4f3684115498a16bda82a78892ec6003999bbcb0d534943a8fbce3",
+      "integrity": "sha256-JEHola5PNoQRVJiha9qCp4iS7GADmZu8sNU0lDqPvOM=",
       "required": true,
       "parts": [
         {
           "path": "payload/030-000.part",
-          "sha256": "49dfb6c1ab5d2e253465c134624cfb1a3a022fbe8627163d6824b41b28b71a6f",
-          "bytes": 7778
+          "sha256": "2441e895ae4f3684115498a16bda82a78892ec6003999bbcb0d534943a8fbce3",
+          "bytes": 8107
         }
       ]
     },
     {
       "path": "shell.js",
       "url": "shell.js",
-      "transferBytes": 9030,
-      "responseBytes": 9030,
+      "transferBytes": 12593,
+      "responseBytes": 12593,
       "contentEncoding": null,
-      "sha256": "19fc5387882c97ac9ef5b772ca110467a023df3f22dc09ffddeb0f83c2690c0e",
-      "integrity": "sha256-GfxTh4gsl6ye9bdyyhEEZ6Aj3z8i3An/3esPg8JpDA4=",
+      "sha256": "f65990086f03a9f953390cd4587207ff067c5f92d8b57d59306d9110fd2b136a",
+      "integrity": "sha256-9lmQCG8DqflTOQzUWHIH/wZ8X5LYtX1ZMG2REP0rE2o=",
       "required": true,
       "parts": [
         {
           "path": "payload/031-000.part",
-          "sha256": "19fc5387882c97ac9ef5b772ca110467a023df3f22dc09ffddeb0f83c2690c0e",
-          "bytes": 9030
+          "sha256": "f65990086f03a9f953390cd4587207ff067c5f92d8b57d59306d9110fd2b136a",
+          "bytes": 12593
         }
       ]
     }

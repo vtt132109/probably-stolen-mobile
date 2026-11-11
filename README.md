@@ -8,6 +8,8 @@ Mở https://vtt132109.github.io/probably-stolen-mobile/ rồi bấm **Chơi**. 
 
 Save lưu riêng trong trình duyệt trên thiết bị. Chuyển từ địa chỉ cũ: xuất bản sao save ở trang cũ, rồi nhập tại trang mới trước khi bấm Chơi. Không xóa dữ liệu trang khi chưa sao lưu.
 
+Bản v6 tải các file lớn theo gói 8 MB được kiểm tra hash, có thanh %, dung lượng và tốc độ tải trung bình. Nếu mất mạng, tải tiếp sẽ dùng lại các gói đã lưu. Trên iPhone, nên tải offline trong ứng dụng mở từ Màn hình chính; dữ liệu của Chrome/Safari có thể không chuyển sang ứng dụng. Lỗi khởi động nay có phần “Chi tiết lỗi” để chẩn đoán.
+
 ## Triển khai
 
 Repo chỉ chứa bản web đã build và công cụ triển khai, không chứa save cá nhân, thông tin đăng nhập hoặc toàn bộ môi trường Unity. `payload/` chia gói tải thành các phần dưới giới hạn kích thước file Git; `payload.json` ghi hash SHA-256. Workflow kiểm tra từng phần, ghép và giải nén cho máy chủ tĩnh, rồi triển khai bằng GitHub Pages. Không cần máy tính chủ chạy liên tục.

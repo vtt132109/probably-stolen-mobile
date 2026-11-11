@@ -12,6 +12,29 @@
   let checkpointInFlight = null;
   let retryingCheckpoint = false;
   let storageNeedsReload = false;
+  let lastStartupError = '';
+  window.addEventListener('error', event => { if (launching && !window.unityInstance) lastStartupError = event.message || ''; });
+  navigator.serviceWorker?.addEventListener('message', event => {
+    if (event.data?.type === 'ASSET_ERROR') lastStartupError = `Không tải được ${event.data.path}: ${event.data.message}`;
+  });
+
+  async function requireWorker() {
+    let setupTimer;
+    try { await Promise.race([workerSetup,new Promise((_,reject)=>{
+      setupTimer=setTimeout(()=>reject(new Error('Chưa chuẩn bị được bộ tải. Giữ kết nối mạng rồi thử lại.')),20000);
+    })]); } finally { clearTimeout(setupTimer); }
+    if (!registration) throw new Error('Chưa chuẩn bị được bộ tải. Hãy giữ kết nối mạng và mở lại ứng dụng.');
+    if (!navigator.serviceWorker.controller) await new Promise((resolve,reject) => {
+      const changed = () => { if(navigator.serviceWorker.controller) finish(); };
+      const timer = setTimeout(()=>finish(new Error('Bộ tải chưa sẵn sàng. Đóng ứng dụng rồi mở lại khi có mạng.')),20000);
+      function finish(error) { clearTimeout(timer);navigator.serviceWorker.removeEventListener('controllerchange',changed);error?reject(error):resolve(); }
+      navigator.serviceWorker.addEventListener('controllerchange',changed);changed();
+    });
+    const state=await sendToWorker('OFFLINE_STATUS');
+    const response=navigator.onLine ? await fetch('pwa-build.json',{cache:'no-store'}).catch(()=>null) : null;
+    if(response?.ok && (await response.json()).version!==state.version)
+      throw new Error('Có bản cập nhật đang chờ. Đóng tất cả tab game và cửa sổ ứng dụng, rồi mở lại. Không cần xóa save.');
+  }
 
   // The game must register real save/visibility hooks. This shell never claims a save occurred.
   window.ProbablyStolenPWA = Object.freeze({
@@ -79,21 +102,27 @@
   });
 
   byId('play-button').addEventListener('click', async () => {
-    if (launching) return;
+    if (launching || downloading) return;
     launching = true;
     try {
       if(!window.ProbablyStolenSaveUI) throw new Error('Chưa tải đủ giao diện. Hãy tải lại ứng dụng.');
       await window.ProbablyStolenSaveUI.prepareToPlay();
+      if(window.unityBuild.requiresWorker) await requireWorker();
     }
     catch (error) { launching = false; loadStatus.textContent = error.message; return; }
     byId('play-button').hidden = true;
     byId('load-progress').hidden = false;
     loadStatus.textContent = 'Đang tải game…';
+    byId('load-error-details').hidden = true;
     const script = document.createElement('script');
     script.src = window.unityBuild.loaderUrl;
     const fail = error => {
       console.error('Game loading failed', error);
       loadStatus.textContent = 'Chưa tải được game. Kiểm tra kết nối rồi thử lại.';
+      const reason = error?.message || (typeof error === 'string' ? error : `Không tải được bộ khởi động: ${script.src}`);
+      byId('load-error-message').textContent = [reason,lastStartupError,`Chế độ: ${window.matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'Ứng dụng' : 'Trình duyệt'}`].filter(Boolean).join('\n').slice(0,2000);
+      byId('load-error-details').hidden = false;
+      byId('load-error-details').open = true;
       byId('load-progress').hidden = true;
       byId('retry-button').hidden = false;
     };
@@ -105,7 +134,7 @@
           // Retina phones otherwise render up to nine pixels per CSS pixel.
           // Keep readable text without paying that full fill-rate/framebuffer cost.
           devicePixelRatio: window.ProbablyStolenGraphics.pixelRatio(),
-          showBanner(message, type) { if (type === 'error') loadStatus.textContent = message; },
+          showBanner(message, type) { if (type === 'error') { lastStartupError=message;loadStatus.textContent = message; } },
         }, progress => { byId('load-progress').value = progress; });
         byId('launch-panel').hidden = true;
         canvas.focus();
@@ -122,22 +151,24 @@
     if (!worker) return Promise.reject(new Error('Chưa có bản offline đang hoạt động.'));
     return new Promise((resolve, reject) => {
       const channel = new MessageChannel();
-      const timeout = setTimeout(() => finish(new Error('Lượt tải mất quá nhiều thời gian. Hãy thử lại.')), 10 * 60 * 1000);
+      let timeout;
+      const armTimeout = () => { clearTimeout(timeout);timeout=setTimeout(()=>finish(new Error('Lượt tải mất quá nhiều thời gian. Hãy thử lại.')),type==='OFFLINE_STATUS'?20000:10*60*1000); };
       function finish(error, result) {
         clearTimeout(timeout);
         channel.port1.close();
         if (error) reject(error); else resolve(result);
       }
       channel.port1.onmessage = ({ data }) => {
-        if (data.type === 'OFFLINE_PROGRESS') progress?.(data);
+        if (data.type === 'OFFLINE_PROGRESS') { armTimeout();progress?.(data); }
         else if (data.type === 'OFFLINE_ERROR') finish(new Error(data.message));
         else if (data.type === 'OFFLINE_STATUS') finish(null, data);
       };
-      worker.postMessage({ type }, [channel.port2]);
+      armTimeout();worker.postMessage({ type }, [channel.port2]);
     });
   }
 
   function renderOfflineStatus(state) {
+    if(state.ready) { byId('offline-progress').value=1;byId('offline-transfer').textContent='100% · Đã tải đủ'; }
     offlineStatus.textContent = state.ready
       ? 'Nội dung cần thiết đã tải đủ để chơi offline trên thiết bị này.'
       : 'Nội dung offline chưa tải đủ. Cần kết nối mạng để tải phần còn lại.';
@@ -153,20 +184,30 @@
   }
 
   offlineButton.addEventListener('click', async () => {
-    if (downloading) return;
+    if (downloading || (launching && !window.unityInstance)) return;
     downloading = true;
+    byId('play-button').disabled = true;
+    byId('offline-progress').hidden = false;
+    byId('offline-progress').value = 0;
+    byId('offline-transfer').hidden = false;
+    byId('offline-transfer').textContent = 'Đang kiểm tra dữ liệu đã tải…';
     offlineButton.disabled = true;
     offlineStatus.textContent = 'Đang tải nội dung. Hãy giữ cửa sổ này mở…';
     try {
       renderOfflineStatus(await sendToWorker('OFFLINE_DOWNLOAD', progress => {
         offlineStatus.textContent = `Đang chuẩn bị nội dung offline · ${progress.complete}/${progress.total}`;
+        const ratio = progress.totalBytes ? progress.completedBytes/progress.totalBytes : progress.complete/progress.total;
+        byId('offline-progress').value = Math.min(1,ratio);
+        byId('offline-transfer').textContent = Number.isFinite(progress.totalBytes)
+          ? `${Math.floor(ratio*100)}% · ${(progress.completedBytes/1e6).toFixed(1)} / ${(progress.totalBytes/1e6).toFixed(1)} MB · ${((progress.bytesPerSecond||0)/1e6).toFixed(2)} MB/s`
+          : `${Math.floor(ratio*100)}% · ${progress.complete}/${progress.total} tệp`;
       }));
     } catch (error) {
       console.error('Offline download incomplete', error);
       offlineStatus.textContent = 'Chưa tải đủ nội dung offline. Kiểm tra mạng và dung lượng trống, rồi thử lại.';
       offlineButton.disabled = false;
       offlineButton.textContent = 'Tiếp tục tải offline';
-    } finally { downloading = false; }
+    } finally { downloading = false;byId('play-button').disabled=false; }
   });
 
   async function setupPWA() {
@@ -187,5 +228,5 @@
       offlineStatus.textContent = 'Chế độ offline chưa sẵn sàng ở bản này. Bạn vẫn có thể chơi khi có mạng.';
     }
   }
-  setupPWA();
+  const workerSetup = setupPWA();
 })();
