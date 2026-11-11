@@ -110,6 +110,7 @@
       if(window.unityBuild.requiresWorker) await requireWorker();
     }
     catch (error) { launching = false; loadStatus.textContent = error.message; return; }
+    window.ProbablyStolenStartup.begin(window.unityBuild.config.dataUrl);
     byId('play-button').hidden = true;
     byId('load-progress').hidden = false;
     loadStatus.textContent = 'Đang tải game…';
@@ -118,8 +119,9 @@
     script.src = window.unityBuild.loaderUrl;
     const fail = error => {
       console.error('Game loading failed', error);
-      loadStatus.textContent = 'Chưa tải được game. Kiểm tra kết nối rồi thử lại.';
+      loadStatus.textContent = 'Chưa mở được game. Xem chi tiết bên dưới rồi thử lại.';
       const reason = error?.message || (typeof error === 'string' ? error : `Không tải được bộ khởi động: ${script.src}`);
+      window.ProbablyStolenStartup.fail([reason, lastStartupError].filter(Boolean).join('\n'));
       byId('load-error-message').textContent = [reason,lastStartupError,`Chế độ: ${window.matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'Ứng dụng' : 'Trình duyệt'}`].filter(Boolean).join('\n').slice(0,2000);
       byId('load-error-details').hidden = false;
       byId('load-error-details').open = true;
@@ -129,14 +131,28 @@
     script.onerror = fail;
     script.onload = async () => {
       try {
+        loadStatus.textContent = 'Đang nạp dữ liệu game…';
+        window.ProbablyStolenStartup.phase('Nạp dữ liệu game');
+        let initializingScene = false;
         window.unityInstance = await createUnityInstance(canvas, {
           ...window.unityBuild.config,
           matchWebGLToCanvasSize: false,
           // Retina phones otherwise render up to nine pixels per CSS pixel.
           // Keep readable text without paying that full fill-rate/framebuffer cost.
           devicePixelRatio: window.ProbablyStolenGraphics.pixelRatio(),
+          print(message) {
+            console.log(message);
+            if (String(message).startsWith('Loading player data')) {
+              initializingScene = true;
+              window.ProbablyStolenStartup.phase('Khởi tạo cảnh game');
+            }
+          },
           showBanner(message, type) { if (type === 'error') { lastStartupError=message;loadStatus.textContent = message; } },
-        }, progress => { byId('load-progress').value = progress; });
+        }, progress => {
+          byId('load-progress').value = progress;
+          if (!initializingScene) window.ProbablyStolenStartup.phase('Nạp dữ liệu game', progress);
+        });
+        window.ProbablyStolenStartup.ready(window.unityInstance);
         byId('launch-panel').hidden = true;
         canvas.focus();
         window.dispatchEvent(new CustomEvent('probably-stolen-ready'));

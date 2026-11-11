@@ -20,6 +20,7 @@ h1 span { color: var(--accent); }
 #offline-transfer { font-variant-numeric: tabular-nums; color: var(--accent); }
 #load-error-details { margin-top: .75rem; }
 #load-error-message { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; max-height: 8rem; overflow: auto; }
+#startup-report { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; max-height: 9rem; overflow: auto; user-select: text; }
 .hint { max-width: 34rem; font-size: .8rem; color: var(--muted); }
 #orientation-tip { position: fixed; bottom: max(.6rem, env(safe-area-inset-bottom)); left: max(1rem, env(safe-area-inset-left)); right: max(1rem, env(safe-area-inset-right)); margin: 0; text-align: center; background: #111714e8; color: var(--paper); font-size: .8rem; pointer-events: none; padding: .5rem; }
 #app-menu { position: fixed; top: max(.5rem, env(safe-area-inset-top)); left: max(.5rem, env(safe-area-inset-left)); z-index: 5; max-width: min(23rem, calc(100vw - 2rem)); }
