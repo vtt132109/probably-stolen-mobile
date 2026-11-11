@@ -1,0 +1,191 @@
+(() => {
+  'use strict';
+  const byId = id => document.getElementById(id);
+  const canvas = byId('unity-canvas');
+  const loadStatus = byId('load-status');
+  const offlineStatus = byId('offline-status');
+  const offlineButton = byId('offline-button');
+  let registration;
+  let launching = false;
+  let downloading = false;
+  let gameHooks = null;
+  let checkpointInFlight = null;
+  let retryingCheckpoint = false;
+  let storageNeedsReload = false;
+
+  // The game must register real save/visibility hooks. This shell never claims a save occurred.
+  window.ProbablyStolenPWA = Object.freeze({
+    registerGameHooks(hooks) { gameHooks = hooks; },
+    async requestCheckpoint(reason = 'manual') {
+      if (!gameHooks?.checkpoint) return { supported: false };
+      if (!checkpointInFlight) checkpointInFlight = Promise.resolve()
+        .then(() => gameHooks.checkpoint(reason)).then(() => ({ supported: true }))
+        .finally(() => { checkpointInFlight = null; });
+      return checkpointInFlight;
+    },
+  });
+
+  function showSaveFailure(event) {
+    storageNeedsReload = event?.detail?.phase === 'hydrate';
+    byId('save-warning-message').textContent = storageNeedsReload
+      ? 'Chưa đọc được dữ liệu lưu trên thiết bị. Hãy tải lại game để thử lại.'
+      : 'Chưa ghi được điểm lưu gần nhất xuống thiết bị. Giữ game mở và thử đồng bộ lại.';
+    if (!retryingCheckpoint) byId('save-retry-button').textContent = storageNeedsReload ? 'Tải lại game' : 'Thử đồng bộ lại';
+    byId('save-warning').hidden = false;
+    byId('save-sync-status').textContent = '';
+  }
+  window.addEventListener('probably-stolen-save-error', showSaveFailure);
+  byId('save-retry-button').addEventListener('click', async () => {
+    if (retryingCheckpoint) return;
+    if (storageNeedsReload) { window.location.reload(); return; }
+    retryingCheckpoint = true;
+    const button = byId('save-retry-button');
+    button.disabled = true;
+    button.textContent = 'Đang đồng bộ…';
+    try {
+      const result = await window.ProbablyStolenPWA.requestCheckpoint('manual-retry');
+      if (result.supported) {
+        byId('save-warning').hidden = true;
+        byId('save-sync-status').textContent = 'Đã đồng bộ điểm lưu gần nhất xuống thiết bị.';
+      } else {
+        byId('save-warning-message').textContent = 'Bản game chưa sẵn sàng đồng bộ dữ liệu. Hãy thử lại sau khi game tải xong.';
+      }
+    } catch (error) {
+      console.error('Checkpoint retry failed', error);
+      showSaveFailure();
+    } finally {
+      retryingCheckpoint = false;
+      button.disabled = false;
+      button.textContent = 'Thử đồng bộ lại';
+    }
+  });
+
+  function resize() {
+    document.documentElement.style.setProperty('--viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
+  }
+  window.addEventListener('resize', resize);
+  window.visualViewport?.addEventListener('resize', resize);
+  resize();
+
+  document.addEventListener('visibilitychange', () => {
+    const hidden = document.hidden;
+    gameHooks?.visibility?.(hidden);
+    window.dispatchEvent(new CustomEvent('probably-stolen-visibility', { detail: { hidden } }));
+    if (hidden) window.ProbablyStolenPWA.requestCheckpoint('hidden').catch(error => {
+      console.error('Checkpoint failed', error);
+      window.dispatchEvent(new CustomEvent('probably-stolen-save-error'));
+    });
+    else refreshOfflineStatus();
+  });
+
+  byId('play-button').addEventListener('click', async () => {
+    if (launching) return;
+    launching = true;
+    try {
+      if(!window.ProbablyStolenSaveUI) throw new Error('Chưa tải đủ giao diện. Hãy tải lại ứng dụng.');
+      await window.ProbablyStolenSaveUI.prepareToPlay();
+    }
+    catch (error) { launching = false; loadStatus.textContent = error.message; return; }
+    byId('play-button').hidden = true;
+    byId('load-progress').hidden = false;
+    loadStatus.textContent = 'Đang tải game…';
+    const script = document.createElement('script');
+    script.src = window.unityBuild.loaderUrl;
+    const fail = error => {
+      console.error('Game loading failed', error);
+      loadStatus.textContent = 'Chưa tải được game. Kiểm tra kết nối rồi thử lại.';
+      byId('load-progress').hidden = true;
+      byId('retry-button').hidden = false;
+    };
+    script.onerror = fail;
+    script.onload = async () => {
+      try {
+        window.unityInstance = await createUnityInstance(canvas, {
+          ...window.unityBuild.config,
+          // Retina phones otherwise render up to nine pixels per CSS pixel.
+          // Keep readable text without paying that full fill-rate/framebuffer cost.
+          devicePixelRatio: window.ProbablyStolenGraphics.pixelRatio(),
+          showBanner(message, type) { if (type === 'error') loadStatus.textContent = message; },
+        }, progress => { byId('load-progress').value = progress; });
+        byId('launch-panel').hidden = true;
+        canvas.focus();
+        window.dispatchEvent(new CustomEvent('probably-stolen-ready'));
+        await refreshOfflineStatus();
+      } catch (error) { fail(error); }
+    };
+    document.body.append(script);
+  });
+  byId('retry-button').addEventListener('click', () => window.location.reload());
+
+  function sendToWorker(type, progress) {
+    const worker = navigator.serviceWorker.controller || registration?.active;
+    if (!worker) return Promise.reject(new Error('Chưa có bản offline đang hoạt động.'));
+    return new Promise((resolve, reject) => {
+      const channel = new MessageChannel();
+      const timeout = setTimeout(() => finish(new Error('Lượt tải mất quá nhiều thời gian. Hãy thử lại.')), 10 * 60 * 1000);
+      function finish(error, result) {
+        clearTimeout(timeout);
+        channel.port1.close();
+        if (error) reject(error); else resolve(result);
+      }
+      channel.port1.onmessage = ({ data }) => {
+        if (data.type === 'OFFLINE_PROGRESS') progress?.(data);
+        else if (data.type === 'OFFLINE_ERROR') finish(new Error(data.message));
+        else if (data.type === 'OFFLINE_STATUS') finish(null, data);
+      };
+      worker.postMessage({ type }, [channel.port2]);
+    });
+  }
+
+  function renderOfflineStatus(state) {
+    offlineStatus.textContent = state.ready
+      ? 'Nội dung cần thiết đã tải đủ để chơi offline trên thiết bị này.'
+      : 'Nội dung offline chưa tải đủ. Cần kết nối mạng để tải phần còn lại.';
+    const size = state.bytes >= 1e9 ? `${(state.bytes / 1e9).toFixed(2)} GB` : `${Math.ceil(state.bytes / 1e6)} MB`;
+    offlineButton.textContent = state.ready ? 'Đã sẵn sàng offline' : `Tải để chơi offline · ${size}`;
+    offlineButton.disabled = state.ready;
+  }
+
+  async function refreshOfflineStatus() {
+    if (!registration || downloading) return;
+    try { renderOfflineStatus(await sendToWorker('OFFLINE_STATUS')); }
+    catch (_) { offlineStatus.textContent = 'Chưa kiểm tra được nội dung offline. Bạn vẫn có thể chơi khi có mạng.'; }
+  }
+
+  offlineButton.addEventListener('click', async () => {
+    if (downloading) return;
+    downloading = true;
+    offlineButton.disabled = true;
+    offlineStatus.textContent = 'Đang tải nội dung. Hãy giữ cửa sổ này mở…';
+    try {
+      renderOfflineStatus(await sendToWorker('OFFLINE_DOWNLOAD', progress => {
+        offlineStatus.textContent = `Đang chuẩn bị nội dung offline · ${progress.complete}/${progress.total}`;
+      }));
+    } catch (error) {
+      console.error('Offline download incomplete', error);
+      offlineStatus.textContent = 'Chưa tải đủ nội dung offline. Kiểm tra mạng và dung lượng trống, rồi thử lại.';
+      offlineButton.disabled = false;
+      offlineButton.textContent = 'Tiếp tục tải offline';
+    } finally { downloading = false; }
+  });
+
+  async function setupPWA() {
+    if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) byId('install-tip').hidden = true;
+    if (!('serviceWorker' in navigator) || !window.isSecureContext) {
+      offlineStatus.textContent = 'Chế độ offline cần trình duyệt hỗ trợ và kết nối HTTPS.';
+      return;
+    }
+    try {
+      registration = await navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' });
+      await navigator.serviceWorker.ready;
+      const showUpdate = () => { if (registration.waiting) byId('update-tip').hidden = false; };
+      registration.addEventListener('updatefound', () => registration.installing?.addEventListener('statechange', showUpdate));
+      showUpdate();
+      await refreshOfflineStatus();
+    } catch (error) {
+      console.warn('Offline setup unavailable', error);
+      offlineStatus.textContent = 'Chế độ offline chưa sẵn sàng ở bản này. Bạn vẫn có thể chơi khi có mạng.';
+    }
+  }
+  setupPWA();
+})();

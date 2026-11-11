@@ -1,0 +1,32 @@
+(() => {
+  'use strict';
+  const key = 'probably-stolen-graphics-v1';
+  const quality = document.getElementById('graphics-quality');
+  const fps = document.getElementById('graphics-fps');
+  const status = document.getElementById('graphics-status');
+  const scales = { low: 1, medium: 1.5, high: 2 };
+  let stored;
+  try { stored = JSON.parse(localStorage.getItem(key)); } catch (_) { /* Storage may be unavailable. */ }
+  if (stored && Object.hasOwn(scales, stored.quality)) quality.value = stored.quality;
+  if ([30, 60, 90].includes(stored?.fps)) fps.value = String(stored.fps);
+  const pixelRatio = () => Math.min(window.devicePixelRatio || 1, scales[quality.value]);
+  function apply() {
+    const player = window.unityInstance;
+    if (player?.Module) {
+      player.Module.devicePixelRatio = pixelRatio();
+      window.dispatchEvent(new Event('resize'));
+      player.SendMessage('ProbablyStolenMobileInput', 'SetFrameRate', fps.value);
+    }
+  }
+  function change() {
+    apply();
+    try {
+      localStorage.setItem(key, JSON.stringify({quality:quality.value, fps:Number(fps.value)}));
+      status.textContent = 'Đã lưu cài đặt.';
+    } catch (_) { status.textContent = 'Đã áp dụng; trình duyệt chưa cho lưu cài đặt.'; }
+  }
+  quality.addEventListener('change', change);
+  fps.addEventListener('change', change);
+  window.addEventListener('probably-stolen-ready', apply);
+  window.ProbablyStolenGraphics = Object.freeze({pixelRatio});
+})();
