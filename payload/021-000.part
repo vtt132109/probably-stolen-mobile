@@ -3,30 +3,67 @@
   const key = 'probably-stolen-graphics-v1';
   const quality = document.getElementById('graphics-quality');
   const fps = document.getElementById('graphics-fps');
+  const display = document.getElementById('graphics-display');
+  const fullscreen = document.getElementById('fullscreen-button');
+  const canvas = document.getElementById('unity-canvas');
   const status = document.getElementById('graphics-status');
   const scales = { low: 1, medium: 1.5, high: 2 };
   let stored;
   try { stored = JSON.parse(localStorage.getItem(key)); } catch (_) { /* Storage may be unavailable. */ }
   if (stored && Object.hasOwn(scales, stored.quality)) quality.value = stored.quality;
   if ([30, 60, 90].includes(stored?.fps)) fps.value = String(stored.fps);
+  if (['stretch', 'fit'].includes(stored?.display)) display.value = stored.display;
   const pixelRatio = () => Math.min(window.devicePixelRatio || 1, scales[quality.value]);
+  function resize() {
+    document.documentElement.classList.toggle('stretch-game', display.value === 'stretch');
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    let width = Math.round(rect.width * pixelRatio());
+    let height = Math.round(rect.height * pixelRatio());
+    if (display.value === 'stretch' && rect.width > rect.height) {
+      // Render the entire original 16:9 scene, then let CSS fill the screen.
+      // Exact multiples avoid Unity's letterbox rounding leaving a dark edge.
+      const unit = Math.max(1, Math.round(Math.min(width / 16, height / 9)));
+      width = unit * 16;
+      height = unit * 9;
+    }
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+  }
   function apply() {
+    resize();
     const player = window.unityInstance;
     if (player?.Module) {
       player.Module.devicePixelRatio = pixelRatio();
-      window.dispatchEvent(new Event('resize'));
       player.SendMessage('ProbablyStolenMobileInput', 'SetFrameRate', fps.value);
     }
   }
   function change() {
     apply();
     try {
-      localStorage.setItem(key, JSON.stringify({quality:quality.value, fps:Number(fps.value)}));
+      localStorage.setItem(key, JSON.stringify({quality:quality.value, fps:Number(fps.value), display:display.value}));
       status.textContent = 'Đã lưu cài đặt.';
     } catch (_) { status.textContent = 'Đã áp dụng; trình duyệt chưa cho lưu cài đặt.'; }
   }
   quality.addEventListener('change', change);
   fps.addEventListener('change', change);
+  display.addEventListener('change', change);
+  // Only expose native fullscreen when the browser actually supports it.
+  fullscreen.hidden = !document.fullscreenEnabled;
+  fullscreen.addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch (_) { status.textContent = 'Trình duyệt chưa cho mở toàn màn hình. Hãy mở game từ Màn hình chính.'; }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    fullscreen.textContent = document.fullscreenElement ? 'Thoát toàn màn hình' : 'Mở toàn màn hình';
+    resize();
+  });
+  window.addEventListener('resize', resize);
+  window.visualViewport?.addEventListener('resize', resize);
+  new ResizeObserver(resize).observe(canvas);
   window.addEventListener('probably-stolen-ready', apply);
-  window.ProbablyStolenGraphics = Object.freeze({pixelRatio});
+  window.ProbablyStolenGraphics = Object.freeze({pixelRatio, resize});
+  resize();
 })();

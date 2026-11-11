@@ -49,6 +49,10 @@
     <div class="menu-content">
       <fieldset class="graphics-settings">
         <legend>Hình ảnh</legend>
+        <label for="graphics-display">Khung hình</label>
+        <select id="graphics-display"><option value="stretch" selected>Giãn kín màn hình</option><option value="fit">Giữ tỉ lệ gốc 16:9</option></select>
+        <p class="hint">Giãn kín khi xoay ngang, giữ đủ nội dung; hình sẽ hơi rộng hơn trên điện thoại dài.</p>
+        <button id="fullscreen-button" type="button" hidden>Mở toàn màn hình</button>
         <label for="graphics-quality">Chất lượng</label>
         <select id="graphics-quality"><option value="low">Thấp — nhẹ máy</option><option value="medium" selected>Vừa — cân bằng</option><option value="high">Cao — sắc nét</option></select>
         <label for="graphics-fps">Giới hạn FPS</label>
@@ -87,11 +91,11 @@
   </details>
   <script>
     window.unityBuild = {
-      loaderUrl: "Build/iphone-pwa-v5-settings-20261109.loader.js",
+      loaderUrl: "Build/iphone-pwa-v7-memory-20261112.loader.js",
       config: {
-        dataUrl: "Build/iphone-pwa-v5-settings-20261109.data.gz",
-        frameworkUrl: "Build/iphone-pwa-v5-settings-20261109.framework.js.gz",
-        codeUrl: "Build/iphone-pwa-v5-settings-20261109.wasm.gz",
+        dataUrl: "Build/iphone-pwa-v7-memory-20261112.data.gz",
+        frameworkUrl: "Build/iphone-pwa-v7-memory-20261112.framework.js.gz",
+        codeUrl: "Build/iphone-pwa-v7-memory-20261112.wasm.gz",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "Local Reconstruction",
         productName: "Probably Stolen Mobile",

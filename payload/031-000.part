@@ -131,6 +131,7 @@
       try {
         window.unityInstance = await createUnityInstance(canvas, {
           ...window.unityBuild.config,
+          matchWebGLToCanvasSize: false,
           // Retina phones otherwise render up to nine pixels per CSS pixel.
           // Keep readable text without paying that full fill-rate/framebuffer cost.
           devicePixelRatio: window.ProbablyStolenGraphics.pixelRatio(),
