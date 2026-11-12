@@ -1,141 +1,188 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111714">
+  <title>Đo giới hạn bộ nhớ</title>
+  <style>
+    :root { color-scheme: dark; --ink: #111714; --paper: #f2eee1; --muted: #a6b3a8; --accent: #efc382; --edge: #485b4d; --bad: #f08b7a; font: 16px/1.5 system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--ink); color: var(--paper); padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+    main { max-width: 38rem; margin: 0 auto; }
+    h1 { font: 800 1.4rem/1.2 ui-monospace, monospace; margin: .5rem 0 1rem; color: var(--accent); }
+    p, li { font-size: .9rem; } .muted { color: var(--muted); font-size: .8rem; }
+    label { display: block; margin: .8rem 0 .3rem; font-size: .85rem; }
+    select, button { width: 100%; min-height: 44px; font: inherit; border-radius: 3px; }
+    select { padding: .5rem; color: var(--paper); background: #1d2920; border: 1px solid var(--edge); }
+    button { margin-top: .8rem; padding: .6rem 1rem; border: 1px solid var(--accent); background: var(--accent); color: var(--ink); font-weight: 700; }
+    button.secondary { background: transparent; color: var(--paper); border-color: var(--edge); }
+    button:disabled { opacity: .5; }
+    #live { font: 700 2rem/1.2 ui-monospace, monospace; font-variant-numeric: tabular-nums; margin: 1rem 0 .3rem; }
+    #status { min-height: 1.5em; }
+    .box { border: 1px solid var(--edge); padding: .8rem; margin: 1rem 0; }
+    .crash { border-color: var(--bad); }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; user-select: text; max-height: 16rem; overflow: auto; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Đo giới hạn bộ nhớ trên thiết bị</h1>
+  <p>Trang này xin thêm bộ nhớ từng bước cho đến khi trình duyệt từ chối hoặc iOS tắt trang. Mỗi bước được ghi lại <strong>trước khi</strong> xin, nên sau khi bị tắt chỉ cần mở lại trang này là thấy con số. Không đụng tới save game.</p>
+  <p class="muted">Nên đóng game và các tab/ứng dụng khác trước khi đo. iOS có thể hiện "Đã có sự cố xảy ra liên tục" — đó là kết quả mong đợi; mở lại trang này.</p>
+
+  <div id="last" class="box" hidden></div>
+
+  <label for="mode">Loại bộ nhớ</label>
+  <select id="mode">
+    <option value="game">Giống game: giữ 285 MB dữ liệu + tăng vùng nhớ WebAssembly</option>
+    <option value="wasm">Vùng nhớ WebAssembly (vùng nhớ của Unity)</option>
+    <option value="buffer">ArrayBuffer JavaScript</option>
+    <option value="audio">Âm thanh đã giải nén (Web Audio)</option>
+    <option value="webgl">Texture WebGL (bộ nhớ đồ họa)</option>
+  </select>
+  <label for="step">Mỗi bước</label>
+  <select id="step"><option value="8">8 MB</option><option value="16" selected>16 MB</option><option value="32">32 MB</option></select>
+  <label for="cap">Dừng khi đạt</label>
+  <select id="cap"><option value="1024">1 GB</option><option value="2048">2 GB</option><option value="4096" selected>4 GB</option></select>
+
+  <div id="live">0 MB</div>
+  <p id="status" role="status" aria-live="polite">Sẵn sàng.</p>
+  <button id="start" type="button">Bắt đầu đo</button>
+  <button id="copy" type="button" class="secondary">Sao chép kết quả</button>
+  <button id="clear" type="button" class="secondary">Xóa lịch sử đo</button>
+  <p id="copy-status" class="muted" role="status"></p>
+
+  <div class="box"><strong>Lịch sử đo</strong><pre id="history">Chưa có.</pre></div>
+  <p class="muted"><a href="./">← Quay lại game</a></p>
+</main>
+<script>
 (() => {
   'use strict';
-  const bar = document.getElementById('mobile-controls');
-  const canvas = document.getElementById('unity-canvas');
-  const enabled = document.getElementById('touch-controls-enabled');
-  const active = new Map();
-  const nativePointers = new Set();
-  let nativeMouseHeld = false;
-  let bridgeReady = false;
-  // Keep the full game area clear. Extra actions remain available on demand.
-  enabled.checked = false;
+  const KEY = 'probably-stolen-memory-probe-v1';
+  const MB = 1048576, PAGE = 65536, DATA_BYTES = 298967749;
+  const byId = id => document.getElementById(id);
+  const modeNames = {game:'Giống game (285 MB dữ liệu + WASM)', wasm:'WebAssembly', buffer:'ArrayBuffer', audio:'Web Audio', webgl:'Texture WebGL'};
+  let running = false;
 
-  const connected = () => bridgeReady && typeof window.unityInstance?.SendMessage === 'function';
-  function send(method, action = '') {
-    if (connected()) window.unityInstance.SendMessage('ProbablyStolenMobileInput', method, action);
+  function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {runs: []}; } catch (_) { return {runs: []}; } }
+  function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); return true; } catch (_) { return false; } }
+  const standalone = () => !!(window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone);
+
+  function describe(run) {
+    const outcome = run.outcome === 'killed' ? (run.attemptMB > run.okMB
+        ? `BỊ TẮT khi đang xin lên ${run.attemptMB} MB (đã giữ được ${run.okMB} MB)`
+        : `BỊ TẮT sau khi đã giữ được ${run.okMB} MB`)
+      : run.outcome === 'refused' ? `Trình duyệt TỪ CHỐI ở ${run.attemptMB} MB (đã giữ được ${run.okMB} MB): ${run.error}`
+      : run.outcome === 'cap' ? `Đạt mức dừng ${run.okMB} MB, không bị tắt`
+      : run.outcome === 'running' ? `Đang đo… ${run.okMB} MB` : run.outcome;
+    return `${run.started.replace('T', ' ').slice(0, 19)} · ${modeNames[run.mode] || run.mode} · bước ${run.stepMB} MB · ${run.standalone ? 'Ứng dụng' : 'Trình duyệt'}\n  → ${outcome}`;
   }
-  function renderPressed() {
-    for (const button of bar.querySelectorAll('[data-game-action]')) {
-      button.setAttribute('aria-pressed', String([...active.values()].includes(button.dataset.gameAction)));
+  function render() {
+    const state = load();
+    byId('history').textContent = state.runs.length ? state.runs.slice().reverse().map(describe).join('\n\n') : 'Chưa có.';
+    const last = state.runs.at(-1);
+    if (last && last.outcome === 'killed') {
+      byId('last').hidden = false; byId('last').className = 'box crash';
+      byId('last').textContent = `Lần đo trước bị iOS tắt: đã giữ được ${last.okMB} MB (${modeNames[last.mode]}). Đây là giới hạn gần đúng. Hãy "Sao chép kết quả" và gửi lại.`;
     }
   }
-  function press(source, action) {
-    if (active.has(source)) return;
-    const alreadyHeld = [...active.values()].includes(action);
-    active.set(source, action);
-    if (!alreadyHeld) send('PressAction', action);
-    renderPressed();
+
+  // A run left in "running" means the page died mid-measurement: that is the result we want.
+  (function recover() {
+    const state = load();
+    const last = state.runs.at(-1);
+    if (last && last.outcome === 'running') { last.outcome = 'killed'; last.recoveredAt = new Date().toISOString(); save(state); }
+    render();
+  })();
+
+  const touch = (bytes, offset = 0, length = bytes.length - offset) => { for (let i = offset; i < offset + length; i += 4096) bytes[i] = 1; };
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  function allocator(mode, stepBytes) {
+    const held = [];
+    if (mode === 'wasm' || mode === 'game') {
+      let memory;
+      for (const maximum of [65536, 49152, 32768, 16384]) {
+        try { memory = new WebAssembly.Memory({initial: 1, maximum}); break; } catch (_) { /* try a smaller reservation */ }
+      }
+      if (!memory) throw new Error('Không tạo được WebAssembly.Memory');
+      held.push(memory);
+      return { grow() { const before = memory.buffer.byteLength; memory.grow(stepBytes / PAGE); touch(new Uint8Array(memory.buffer), before); } };
+    }
+    if (mode === 'buffer') return { grow() { const bytes = new Uint8Array(stepBytes); touch(bytes); held.push(bytes); } };
+    if (mode === 'audio') {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const context = new Ctx();
+      const frames = Math.floor(stepBytes / 8); // 2 channels x float32
+      return { grow() { const buffer = context.createBuffer(2, frames, context.sampleRate);
+        for (let c = 0; c < 2; c++) { const data = buffer.getChannelData(c); for (let i = 0; i < data.length; i += 1024) data[i] = 0.001; }
+        held.push(buffer); } };
+    }
+    if (mode === 'webgl') {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+      if (!gl) throw new Error('Không có WebGL');
+      const side = Math.floor(Math.sqrt(stepBytes / 4)); const pixels = new Uint8Array(side * side * 4).fill(7);
+      return { grow() { const texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, side, side, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        gl.finish(); const error = gl.getError();
+        if (error === gl.OUT_OF_MEMORY) throw new Error('WebGL OUT_OF_MEMORY'); if (gl.isContextLost()) throw new Error('Mất WebGL context');
+        held.push(texture); } };
+    }
+    throw new Error('Chế độ không hỗ trợ');
   }
-  function release(source) {
-    const action = active.get(source);
-    if (!action) return;
-    active.delete(source);
-    if (![...active.values()].includes(action)) send('ReleaseAction', action);
-    renderPressed();
-  }
-  function releaseAll() {
-    active.clear();
-    nativePointers.clear();
-    nativeMouseHeld = false;
-    send('ReleaseAll');
-    renderPressed();
-  }
-  function updateControls() {
-    const visible = enabled.checked && connected();
-    if (!visible && active.size) releaseAll();
-    bar.hidden = !visible;
-    document.body.classList.toggle('has-mobile-controls', visible);
-    window.dispatchEvent(new Event('resize'));
-  }
-  window.ProbablyStolenInput = Object.freeze({
-    // Called by the real C#/.jslib bridge; loading the HTML alone does not enable controls.
-    ready() { bridgeReady = true; updateControls(); },
+
+  byId('start').addEventListener('click', async () => {
+    if (running) return;
+    running = true; byId('start').disabled = true;
+    const mode = byId('mode').value, stepMB = Number(byId('step').value), capMB = Number(byId('cap').value);
+    const state = load();
+    const run = {mode, stepMB, capMB, okMB: 0, attemptMB: 0, outcome: 'running', started: new Date().toISOString(),
+      standalone: standalone(), browser: navigator.userAgent};
+    state.runs = [...state.runs.slice(-9), run];
+    const persist = () => { if (!save(state)) throw new Error('Không ghi được localStorage'); };
+    let total = 0;
+    try {
+      persist();
+      if (mode === 'game') { // Like the game: the whole data file stays resident in one ArrayBuffer.
+        run.attemptMB = Math.ceil(DATA_BYTES / MB); persist();
+        const data = new Uint8Array(DATA_BYTES); touch(data); window.__probeData = data;
+        total = DATA_BYTES; run.okMB = Math.round(total / MB); persist();
+      }
+      const grow = allocator(mode, stepMB * MB);
+      window.__probeHeld = grow;
+      while (total / MB + stepMB <= capMB) {
+        run.attemptMB = Math.round(total / MB) + stepMB; persist(); // Recorded before asking: survives a kill.
+        grow.grow();
+        total += stepMB * MB; run.okMB = Math.round(total / MB); persist();
+        byId('live').textContent = `${run.okMB} MB`;
+        byId('status').textContent = `Đang xin thêm bộ nhớ (${modeNames[mode]})…`;
+        await wait(120);
+      }
+      run.outcome = 'cap';
+      byId('status').textContent = `Đạt ${run.okMB} MB mà không bị tắt.`;
+    } catch (error) {
+      run.outcome = 'refused'; run.error = String(error?.message || error).slice(0, 300);
+      byId('status').textContent = `Trình duyệt từ chối ở ${run.attemptMB} MB: ${run.error}`;
+    } finally {
+      run.finished = new Date().toISOString(); save(state);
+      running = false; byId('start').disabled = false; render();
+      // Release what we hold so the page stays usable.
+      window.__probeData = null; window.__probeHeld = null;
+    }
   });
-  window.addEventListener('probably-stolen-ready', updateControls);
-  window.addEventListener('probably-stolen-visibility', event => { if (event.detail.hidden) releaseAll(); });
-  window.addEventListener('blur', releaseAll);
-  window.addEventListener('pagehide', releaseAll);
-  enabled.addEventListener('change', updateControls);
 
-  const inside = event => !bar.hidden && event.target instanceof Node && bar.contains(event.target);
-  const buttonFor = event => event.target instanceof Element ? event.target.closest('[data-game-action]') : null;
-  function consume(event) {
-    if (event.cancelable) event.preventDefault();
-    event.stopImmediatePropagation();
-  }
-  // Register before the Unity loader. A toolbar touch must not become a Unity primary
-  // click, move the native mouse position, or add a simulated second mouse button.
-  window.addEventListener('pointerdown', event => {
-    if (!inside(event)) {
-      if (event.target.id === 'unity-canvas') {
-        nativePointers.add(event.pointerId);
-        if (event.pointerType === 'mouse') nativeMouseHeld = true;
-      }
-      return;
-    }
-    const button = buttonFor(event);
-    if (button && event.button === 0) {
-      press(`pointer:${event.pointerId}`, button.dataset.gameAction);
-      button.setPointerCapture(event.pointerId);
-    }
-    consume(event);
-  }, { capture: true, passive: false });
-  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-    window.addEventListener(type, event => {
-      if (nativePointers.delete(event.pointerId)) return;
-      const source = `pointer:${event.pointerId}`;
-      if (!inside(event) && !active.has(source)) return;
-      release(source);
-      consume(event);
-    }, { capture: true, passive: false });
-  }
-  window.addEventListener('pointermove', event => {
-    if (nativePointers.has(event.pointerId)) return;
-    if (inside(event) || active.has(`pointer:${event.pointerId}`)) consume(event);
-  }, { capture: true, passive: false });
-  for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mousemove', 'mouseup', 'dblclick', 'contextmenu']) {
-    window.addEventListener(type, event => {
-      if (type.startsWith('touch') && event.target === canvas) {
-        // A native TouchEvent lists touches on the whole document, even when the
-        // second touch's own event was stopped at our toolbar. Unity simulates
-        // mouse buttons from touch count, so give its listener canvas touches only.
-        // Keep the original trusted event and Touch objects; do not dispatch events.
-        for (const property of ['touches', 'targetTouches', 'changedTouches']) {
-          const original = event[property];
-          const filtered = [...original].filter(touch => touch.target === canvas);
-          if (filtered.length !== original.length) {
-            Object.defineProperty(filtered, 'item', { value: index => filtered[index] || null });
-            Object.defineProperty(event, property, { configurable: true, value: filtered });
-          }
-        }
-        return;
-      }
-      // A native mouse drag starting on the canvas must receive its release even
-      // when its pointer ends over the bar. Toolbar-owned presses are separate.
-      if (nativeMouseHeld && ['mousedown', 'mousemove', 'mouseup'].includes(type)) {
-        if (type === 'mouseup') nativeMouseHeld = false;
-        return;
-      }
-      if (inside(event)) consume(event);
-    }, { capture: true, passive: false });
-  }
-  window.addEventListener('click', event => {
-    if (!inside(event)) return;
-    const button = buttonFor(event);
-    // Assistive technology may invoke click directly without pointer/key events.
-    if (button && event.detail === 0) send('PulseAction', button.dataset.gameAction);
-    consume(event);
-  }, true);
-  window.addEventListener('keydown', event => {
-    if (!inside(event) || !['Enter', 'Space'].includes(event.code)) return;
-    const button = buttonFor(event);
-    if (button) press(`key:${event.code}`, button.dataset.gameAction);
-    consume(event);
-  }, true);
-  window.addEventListener('keyup', event => {
-    const source = `key:${event.code}`;
-    if (!active.has(source)) return;
-    release(source);
-    consume(event);
-  }, true);
+  byId('copy').addEventListener('click', async () => {
+    const state = load();
+    const text = [`Thiết bị: ${navigator.userAgent}`, `Chế độ mở: ${standalone() ? 'Ứng dụng' : 'Trình duyệt'}`, '',
+      ...state.runs.map(describe)].join('\n');
+    try { await navigator.clipboard.writeText(text); byId('copy-status').textContent = 'Đã sao chép.'; }
+    catch (_) { byId('copy-status').textContent = 'Không sao chép tự động được; hãy chọn và sao chép phần Lịch sử đo.'; }
+  });
+  byId('clear').addEventListener('click', () => { save({runs: []}); byId('last').hidden = true; render(); });
 })();
+</script>
+</body>
+</html>

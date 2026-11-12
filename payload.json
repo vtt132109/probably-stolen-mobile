@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "bdf4884f0d7f4d49abaa1979",
+  "sourceVersion": "71f93fb00b7fbc7626bda3cf",
   "files": [
     {
       "path": "Build/iphone-pwa-v8-shared-20261112.data.gz",
@@ -471,17 +471,17 @@
     {
       "path": "index.html",
       "url": "index.html",
-      "transferBytes": 8303,
-      "responseBytes": 8303,
+      "transferBytes": 8583,
+      "responseBytes": 8583,
       "contentEncoding": null,
-      "sha256": "8f8617891460e2ea85881130f17234e5ab3b46fe1ec1e1d32635c66975699fde",
-      "integrity": "sha256-j4YXiRRg4uqFiBEw8XI05as7Rv4eweHTJjXGaXVpn94=",
+      "sha256": "091a48838326e70d4ec69e053f0f9d76e08e49dc9e6f1a9a44ebe9144511e182",
+      "integrity": "sha256-CRpIg4Mm5w1Oxp4FPw+dduCOSdyebxqaROvpFEUR4YI=",
       "required": true,
       "parts": [
         {
           "path": "payload/026-000.part",
-          "sha256": "8f8617891460e2ea85881130f17234e5ab3b46fe1ec1e1d32635c66975699fde",
-          "bytes": 8303
+          "sha256": "091a48838326e70d4ec69e053f0f9d76e08e49dc9e6f1a9a44ebe9144511e182",
+          "bytes": 8583
         }
       ]
     },
@@ -503,6 +503,23 @@
       ]
     },
     {
+      "path": "memory-probe.html",
+      "url": "memory-probe.html",
+      "transferBytes": 11518,
+      "responseBytes": 11518,
+      "contentEncoding": null,
+      "sha256": "b69ea4e5661975139eed97c0b18d4e17b2908ee87d4e575494d141186424bf6a",
+      "integrity": "sha256-tp6k5WYZdROe7ZfAsY1OF7KQjuh9TldUlNFBGGQkv2o=",
+      "required": true,
+      "parts": [
+        {
+          "path": "payload/028-000.part",
+          "sha256": "b69ea4e5661975139eed97c0b18d4e17b2908ee87d4e575494d141186424bf6a",
+          "bytes": 11518
+        }
+      ]
+    },
+    {
       "path": "mobile-input.js",
       "url": "mobile-input.js",
       "transferBytes": 6229,
@@ -513,7 +530,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/028-000.part",
+          "path": "payload/029-000.part",
           "sha256": "8d885efc909d9235338833311e1772d1248eefa99fa85b15678e4aff4ee01c3a",
           "bytes": 6229
         }
@@ -530,7 +547,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/029-000.part",
+          "path": "payload/030-000.part",
           "sha256": "d73cbea495313ddc7b5f23c825d456b7e2a9b36ab97e5867cfda85d8a3c5fc18",
           "bytes": 4940
         }
@@ -547,7 +564,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/030-000.part",
+          "path": "payload/031-000.part",
           "sha256": "fd8dbe083c7f0ff0b6c3dea7d9106c93719fe54ed8f68186305ed87c9c0be22b",
           "bytes": 12464
         }
@@ -564,7 +581,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/031-000.part",
+          "path": "payload/032-000.part",
           "sha256": "f0db938f6ab9ccb89a9c35bb143cccbe5ad79eb4af0bafaa9d4eb207fa70a643",
           "bytes": 8336
         }
@@ -581,7 +598,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/032-000.part",
+          "path": "payload/033-000.part",
           "sha256": "ca24acd889ebf5845bbceb93a56e6cbe91331a189c46a6d830d18f80ca81cb68",
           "bytes": 16532
         }
@@ -590,17 +607,17 @@
     {
       "path": "startup.js",
       "url": "startup.js",
-      "transferBytes": 3183,
-      "responseBytes": 3183,
+      "transferBytes": 3256,
+      "responseBytes": 3256,
       "contentEncoding": null,
-      "sha256": "117d023a067b037c5dc05f167d54ba91818fe76081800805381e1d647b1e26cb",
-      "integrity": "sha256-EX0COgZ7A3xdwF8WfVS6kYGP52CBgAgFOB4dZHseJss=",
+      "sha256": "993a590aabf4d213fdafd3aa0e8b9f954bd38e2bc4de37ec9a05ade8b1e1e3af",
+      "integrity": "sha256-mTpZCqv00hP9r9OqDouflUvTjivE3jfsmgWt6LHh468=",
       "required": true,
       "parts": [
         {
-          "path": "payload/033-000.part",
-          "sha256": "117d023a067b037c5dc05f167d54ba91818fe76081800805381e1d647b1e26cb",
-          "bytes": 3183
+          "path": "payload/034-000.part",
+          "sha256": "993a590aabf4d213fdafd3aa0e8b9f954bd38e2bc4de37ec9a05ade8b1e1e3af",
+          "bytes": 3256
         }
       ]
     }

@@ -1,73 +1,297 @@
 (() => {
   'use strict';
-  const key = 'probably-stolen-last-start-v1';
-  let current = null, lastWrite = 0;
-  let previous;
-  try { previous = JSON.parse(localStorage.getItem(key)); } catch (_) { /* Optional diagnostics. */ }
-  const panel = document.getElementById('startup-diagnostics');
-  const text = document.getElementById('startup-report');
-  function format(report) {
-    if (!report || typeof report !== 'object') return 'Chưa có lần mở game trước.';
-    return [
-      `Bản: ${report.release || '?'}`,
-      `Bộ game: ${report.build || '?'}`,
-      `Lúc mở: ${report.started || '?'}`,
-      `Bước cuối: ${report.phase || '?'}`,
-      report.progress == null ? '' : `Tiến trình bước này: ${Math.round(report.progress * 100)}%`,
-      report.heapBytes ? `Vùng nhớ Unity: ${Math.round(report.heapBytes / 1048576)} MiB` : '',
-      report.error ? `Lỗi: ${report.error}` : '',
-      `Trình duyệt: ${report.browser || '?'}`,
-    ].filter(Boolean).join('\n');
+  const byId = id => document.getElementById(id);
+  const canvas = byId('unity-canvas');
+  const loadStatus = byId('load-status');
+  const offlineStatus = byId('offline-status');
+  const offlineButton = byId('offline-button');
+  let registration;
+  let launching = false;
+  let downloading = false;
+  let gameHooks = null;
+  let checkpointInFlight = null;
+  let retryingCheckpoint = false;
+  let storageNeedsReload = false;
+  let lastStartupError = '';
+  window.addEventListener('error', event => { if (launching && !window.unityInstance) lastStartupError = event.message || ''; });
+  navigator.serviceWorker?.addEventListener('message', event => {
+    if (event.data?.type === 'ASSET_ERROR' && launching && !window.unityInstance)
+      lastStartupError = `Không tải được ${event.data.path}: ${event.data.message}`;
+  });
+
+  async function requireWorker() {
+    let setupTimer;
+    try { await Promise.race([workerSetup,new Promise((_,reject)=>{
+      setupTimer=setTimeout(()=>reject(new Error('Chưa chuẩn bị được bộ tải. Giữ kết nối mạng rồi thử lại.')),20000);
+    })]); } finally { clearTimeout(setupTimer); }
+    if (!registration) throw new Error('Chưa chuẩn bị được bộ tải. Hãy giữ kết nối mạng và mở lại ứng dụng.');
+    if (!navigator.serviceWorker.controller) await new Promise((resolve,reject) => {
+      const changed = () => { if(navigator.serviceWorker.controller) finish(); };
+      const timer = setTimeout(()=>finish(new Error('Bộ tải chưa sẵn sàng. Đóng ứng dụng rồi mở lại khi có mạng.')),20000);
+      function finish(error) { clearTimeout(timer);navigator.serviceWorker.removeEventListener('controllerchange',changed);error?reject(error):resolve(); }
+      navigator.serviceWorker.addEventListener('controllerchange',changed);changed();
+    });
+    const state=await sendToWorker('OFFLINE_STATUS');
+    // Best effort and bounded: a stalled network, captive portal or broken response must not block an
+    // offline-ready game.
+    let published=null;
+    if(navigator.onLine) {
+      const check=new AbortController(), timer=setTimeout(()=>check.abort(),5000);
+      try {
+        const response=await fetch('pwa-build.json',{cache:'no-store',signal:check.signal});
+        if(response.ok) published=(await response.json())?.version;
+      } catch (_) { published=null; } finally { clearTimeout(timer); }
+    }
+    if(typeof published==='string' && published!==state.version)
+      throw Object.assign(new Error('Có bản cập nhật đang chờ. Đóng tất cả tab game và cửa sổ ứng dụng, rồi mở lại. Không cần xóa save.'), {userAction: true});
   }
-  function persist(force = true) {
-    if (!current || (!force && Date.now() - lastWrite < 1000)) return;
-    lastWrite = Date.now();
-    try { localStorage.setItem(key, JSON.stringify(current)); } catch (_) { /* Gameplay does not depend on storage for diagnostics. */ }
+
+  // The game must register real save/visibility hooks. This shell never claims a save occurred.
+  window.ProbablyStolenPWA = Object.freeze({
+    registerGameHooks(hooks) { gameHooks = hooks; },
+    async requestCheckpoint(reason = 'manual') {
+      if (!gameHooks?.checkpoint) return { supported: false };
+      if (!checkpointInFlight) checkpointInFlight = Promise.resolve()
+        .then(() => gameHooks.checkpoint(reason)).then(() => ({ supported: true }))
+        .finally(() => { checkpointInFlight = null; });
+      return checkpointInFlight;
+    },
+  });
+
+  function showSaveFailure(event) {
+    storageNeedsReload = event?.detail?.phase === 'hydrate';
+    byId('save-warning-message').textContent = storageNeedsReload
+      ? 'Chưa đọc được dữ liệu lưu trên thiết bị. Hãy tải lại game để thử lại.'
+      : 'Chưa ghi được điểm lưu gần nhất xuống thiết bị. Giữ game mở và thử đồng bộ lại.';
+    if (!retryingCheckpoint) byId('save-retry-button').textContent = storageNeedsReload ? 'Tải lại game' : 'Thử đồng bộ lại';
+    byId('save-warning').hidden = false;
+    byId('save-sync-status').textContent = '';
   }
-  text.textContent = format(previous);
-  panel.hidden = !previous;
-  document.getElementById('copy-startup-report').addEventListener('click', async () => {
+  window.addEventListener('probably-stolen-save-error', showSaveFailure);
+  byId('save-retry-button').addEventListener('click', async () => {
+    if (retryingCheckpoint) return;
+    if (storageNeedsReload) { window.location.reload(); return; }
+    retryingCheckpoint = true;
+    const button = byId('save-retry-button');
+    button.disabled = true;
+    button.textContent = 'Đang đồng bộ…';
     try {
-      await navigator.clipboard.writeText(text.textContent);
-      document.getElementById('copy-startup-status').textContent = 'Đã sao chép thông tin.';
-    } catch (_) { document.getElementById('copy-startup-status').textContent = 'Bạn có thể chọn và sao chép đoạn thông tin bên trên.'; }
+      const result = await window.ProbablyStolenPWA.requestCheckpoint('manual-retry');
+      if (result.supported) {
+        byId('save-warning').hidden = true;
+        byId('save-sync-status').textContent = 'Đã đồng bộ điểm lưu gần nhất xuống thiết bị.';
+      } else {
+        byId('save-warning-message').textContent = 'Bản game chưa sẵn sàng đồng bộ dữ liệu. Hãy thử lại sau khi game tải xong.';
+      }
+    } catch (error) {
+      console.error('Checkpoint retry failed', error);
+      showSaveFailure();
+    } finally {
+      retryingCheckpoint = false;
+      button.disabled = false;
+      button.textContent = 'Thử đồng bộ lại';
+    }
   });
-  function phase(name, progress = null) {
-    if (!current) return;
-    const changed = current.phase !== name;
-    current.phase = name;
-    current.progress = progress;
-    persist(changed || progress === 1);
+
+  function resize() {
+    document.documentElement.style.setProperty('--viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
   }
-  window.ProbablyStolenStartup = Object.freeze({
-    phase,
-    begin(build) {
-      current = {release: 10, build, started: new Date().toISOString(), browser: navigator.userAgent, phase: 'Chuẩn bị khởi động'};
-      persist();
-    },
-    fail(error) {
-      if (!current) return;
-      current.error = String(error?.message || error).slice(0, 1500);
-      persist();
-      text.textContent = format(current);
-      panel.hidden = false;
-      panel.open = true;
-    },
-    ready(player) {
-      phase('Đã mở game');
-      const update = () => {
-        current.heapBytes = player.Module?.HEAPU8?.buffer.byteLength || 0;
-        persist();
+  window.addEventListener('resize', resize);
+  window.visualViewport?.addEventListener('resize', resize);
+  resize();
+
+  document.addEventListener('visibilitychange', () => {
+    const hidden = document.hidden;
+    gameHooks?.visibility?.(hidden);
+    window.dispatchEvent(new CustomEvent('probably-stolen-visibility', { detail: { hidden } }));
+    if (hidden) window.ProbablyStolenPWA.requestCheckpoint('hidden').catch(error => {
+      console.error('Checkpoint failed', error);
+      window.dispatchEvent(new CustomEvent('probably-stolen-save-error'));
+    });
+    else refreshOfflineStatus();
+  });
+
+  byId('play-button').addEventListener('click', async () => {
+    if (launching || downloading) return;
+    launching = true;
+    let fetchDataWithProgress, wasmLoader;
+    const downloads = new AbortController(); // Stops the other transfer once startup has failed.
+    try {
+      if(!window.ProbablyStolenSaveUI) throw new Error('Chưa tải đủ giao diện. Hãy tải lại ứng dụng.');
+      // A busy backup is an instruction to the player, not a startup failure.
+      await window.ProbablyStolenSaveUI.prepareToPlay();
+    } catch (error) { launching = false; loadStatus.textContent = error.message; return; }
+    try {
+      if(window.unityBuild.requiresWorker) {
+        loadStatus.textContent = 'Đang kiểm tra bộ tải…';
+        await requireWorker();
+        // Journal from here on; a pending-update notice must not replace the previous real report.
+        window.ProbablyStolenStartup.begin(window.unityBuild.config.dataUrl);
+        window.ProbablyStolenStartup.phase('Chuẩn bị bộ tải');
+        const build = await sendToWorker('UNITY_DATA_MANIFEST');
+        fetchDataWithProgress = window.ProbablyStolenDownloads.createDataFetcher(build, window.unityBuild.config.dataUrl, {signal: downloads.signal});
+        if (build.virtualFiles?.some(file => new URL(file.url, location.href).href === new URL(window.unityBuild.config.codeUrl, location.href).href))
+          wasmLoader = window.ProbablyStolenDownloads.createWasmLoader(build, window.unityBuild.config.codeUrl, {signal: downloads.signal});
+      }
+    }
+    catch (error) {
+      launching = false;
+      loadStatus.textContent = error.message;
+      if (!error.userAction) {
+        window.ProbablyStolenStartup.begin(window.unityBuild.config.dataUrl); // Record loader preparation failures too.
+        window.ProbablyStolenStartup.fail(error);
+      }
+      return;
+    }
+    if (!window.unityBuild.requiresWorker) window.ProbablyStolenStartup.begin(window.unityBuild.config.dataUrl);
+    byId('play-button').hidden = true;
+    byId('load-progress').hidden = false;
+    loadStatus.textContent = 'Đang tải game…';
+    byId('load-error-details').hidden = true;
+    const script = document.createElement('script');
+    script.src = window.unityBuild.loaderUrl;
+    let failed = false;
+    const fail = error => {
+      if (failed) return;
+      failed = true;
+      downloads.abort();
+      console.error('Game loading failed', error);
+      loadStatus.textContent = 'Chưa mở được game. Xem chi tiết bên dưới rồi thử lại.';
+      const reason = error?.message || (typeof error === 'string' ? error : `Không tải được bộ khởi động: ${script.src}`);
+      if (lastStartupError && reason.includes(lastStartupError)) lastStartupError = '';
+      window.ProbablyStolenStartup.fail([reason, lastStartupError].filter(Boolean).join('\n'));
+      byId('load-error-message').textContent = [reason,lastStartupError,`Chế độ: ${window.matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'Ứng dụng' : 'Trình duyệt'}`].filter(Boolean).join('\n').slice(0,2000);
+      byId('load-error-details').hidden = false;
+      byId('load-error-details').open = true;
+      byId('load-progress').hidden = true;
+      byId('retry-button').hidden = false;
+    };
+    script.onerror = fail;
+    script.onload = async () => {
+      try {
+        loadStatus.textContent = 'Đang nạp dữ liệu game…';
+        window.ProbablyStolenStartup.phase('Nạp dữ liệu game');
+        let initializingScene = false;
+        const starting = createUnityInstance(canvas, {
+          ...window.unityBuild.config,
+          ...(fetchDataWithProgress ? {fetchDataWithProgress} : {}),
+          ...(wasmLoader ? {instantiateWasm: wasmLoader.instantiateWasm} : {}),
+          matchWebGLToCanvasSize: false,
+          // Retina phones otherwise render up to nine pixels per CSS pixel.
+          // Keep readable text without paying that full fill-rate/framebuffer cost.
+          devicePixelRatio: window.ProbablyStolenGraphics.pixelRatio(),
+          print(message) {
+            console.log(message);
+            if (String(message).startsWith('Loading player data')) {
+              initializingScene = true;
+              window.ProbablyStolenStartup.phase('Khởi tạo cảnh game');
+            }
+          },
+          showBanner(message, type) {
+            if (type !== 'error') return;
+            lastStartupError=message;loadStatus.textContent = message;
+            // e.g. framework.js could not load: the loader never settles, so end the attempt visibly.
+            if (!window.unityInstance) fail(new Error(message));
+          },
+        }, progress => {
+          lastStartupError = ''; // A later part arrived: an earlier transient transfer error is not the cause.
+          byId('load-progress').value = progress;
+          if (!initializingScene) window.ProbablyStolenStartup.phase('Nạp dữ liệu game', progress);
+        });
+        // A WASM transfer failure happens inside Emscripten; surface its real reason.
+        window.unityInstance = await (wasmLoader ? Promise.race([starting, wasmLoader.failure]) : starting);
+        window.ProbablyStolenStartup.ready(window.unityInstance);
+        byId('launch-panel').hidden = true;
+        canvas.focus();
+        window.dispatchEvent(new CustomEvent('probably-stolen-ready'));
+        await refreshOfflineStatus();
+      } catch (error) { fail(error); }
+    };
+    document.body.append(script);
+  });
+  byId('retry-button').addEventListener('click', () => window.location.reload());
+
+  function sendToWorker(type, progress) {
+    const worker = navigator.serviceWorker.controller || registration?.active;
+    if (!worker) return Promise.reject(new Error('Chưa có bản offline đang hoạt động.'));
+    return new Promise((resolve, reject) => {
+      const channel = new MessageChannel();
+      let timeout;
+      const armTimeout = () => { clearTimeout(timeout);timeout=setTimeout(()=>finish(new Error('Lượt tải mất quá nhiều thời gian. Hãy thử lại.')),type==='OFFLINE_DOWNLOAD'?10*60*1000:20000); };
+      function finish(error, result) {
+        clearTimeout(timeout);
+        channel.port1.close();
+        if (error) reject(error); else resolve(result);
+      }
+      channel.port1.onmessage = ({ data }) => {
+        if (data.type === 'OFFLINE_PROGRESS') { armTimeout();progress?.(data); }
+        else if (data.type === 'OFFLINE_ERROR') finish(new Error(data.message));
+        else if (data.type === 'OFFLINE_STATUS' || data.type === 'UNITY_DATA_MANIFEST') finish(null, data);
       };
-      update();
-      window.setInterval(update, 10000);
-    },
+      armTimeout();worker.postMessage({ type }, [channel.port2]);
+    });
+  }
+
+  function renderOfflineStatus(state) {
+    if(state.ready) { byId('offline-progress').value=1;byId('offline-transfer').textContent='100% · Đã tải đủ'; }
+    offlineStatus.textContent = state.ready
+      ? 'Nội dung cần thiết đã tải đủ để chơi offline trên thiết bị này.'
+      : 'Nội dung offline chưa tải đủ. Cần kết nối mạng để tải phần còn lại.';
+    const size = state.bytes >= 1e9 ? `${(state.bytes / 1e9).toFixed(2)} GB` : `${Math.ceil(state.bytes / 1e6)} MB`;
+    offlineButton.textContent = state.ready ? 'Đã sẵn sàng offline' : `Tải để chơi offline · ${size}`;
+    offlineButton.disabled = state.ready;
+  }
+
+  async function refreshOfflineStatus() {
+    if (!registration || downloading) return;
+    try { renderOfflineStatus(await sendToWorker('OFFLINE_STATUS')); }
+    catch (_) { offlineStatus.textContent = 'Chưa kiểm tra được nội dung offline. Bạn vẫn có thể chơi khi có mạng.'; }
+  }
+
+  offlineButton.addEventListener('click', async () => {
+    if (downloading || (launching && !window.unityInstance)) return;
+    downloading = true;
+    byId('play-button').disabled = true;
+    byId('offline-progress').hidden = false;
+    byId('offline-progress').value = 0;
+    byId('offline-transfer').hidden = false;
+    byId('offline-transfer').textContent = 'Đang kiểm tra dữ liệu đã tải…';
+    offlineButton.disabled = true;
+    offlineStatus.textContent = 'Đang tải nội dung. Hãy giữ cửa sổ này mở…';
+    try {
+      renderOfflineStatus(await sendToWorker('OFFLINE_DOWNLOAD', progress => {
+        offlineStatus.textContent = `Đang chuẩn bị nội dung offline · ${progress.complete}/${progress.total}`;
+        const ratio = progress.totalBytes ? progress.completedBytes/progress.totalBytes : progress.complete/progress.total;
+        byId('offline-progress').value = Math.min(1,ratio);
+        byId('offline-transfer').textContent = Number.isFinite(progress.totalBytes)
+          ? `${Math.floor(ratio*100)}% · ${(progress.completedBytes/1e6).toFixed(1)} / ${(progress.totalBytes/1e6).toFixed(1)} MB · ${((progress.bytesPerSecond||0)/1e6).toFixed(2)} MB/s`
+          : `${Math.floor(ratio*100)}% · ${progress.complete}/${progress.total} tệp`;
+      }));
+    } catch (error) {
+      console.error('Offline download incomplete', error);
+      offlineStatus.textContent = 'Chưa tải đủ nội dung offline. Kiểm tra mạng và dung lượng trống, rồi thử lại.';
+      offlineButton.disabled = false;
+      offlineButton.textContent = 'Tiếp tục tải offline';
+    } finally { downloading = false;byId('play-button').disabled=false; }
   });
-  window.addEventListener('error', event => {
-    if (event.message) window.ProbablyStolenStartup.fail(event.error || event.message);
-  });
-  window.addEventListener('unhandledrejection', event => window.ProbablyStolenStartup.fail(event.reason));
-  document.getElementById('unity-canvas').addEventListener('webglcontextlost', () => {
-    window.ProbablyStolenStartup.fail('Trình duyệt mất kết nối với bộ xử lý đồ họa (WebGL context lost).');
-  });
+
+  async function setupPWA() {
+    if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) byId('install-tip').hidden = true;
+    if (!('serviceWorker' in navigator) || !window.isSecureContext) {
+      offlineStatus.textContent = 'Chế độ offline cần trình duyệt hỗ trợ và kết nối HTTPS.';
+      return;
+    }
+    try {
+      registration = await navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' });
+      await navigator.serviceWorker.ready;
+      const showUpdate = () => { if (registration.waiting) byId('update-tip').hidden = false; };
+      registration.addEventListener('updatefound', () => registration.installing?.addEventListener('statechange', showUpdate));
+      showUpdate();
+      await refreshOfflineStatus();
+    } catch (error) {
+      console.warn('Offline setup unavailable', error);
+      offlineStatus.textContent = 'Chế độ offline chưa sẵn sàng ở bản này. Bạn vẫn có thể chơi khi có mạng.';
+    }
+  }
+  const workerSetup = setupPWA();
 })();

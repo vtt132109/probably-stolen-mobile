@@ -28,7 +28,7 @@
       <button id="retry-button" type="button" hidden>Thử tải lại</button>
       <details id="load-error-details" hidden><summary>Chi tiết lỗi</summary><pre id="load-error-message"></pre></details>
       <p class="hint">Xoay ngang iPhone để có thêm không gian thao tác.</p>
-      <p class="hint">Bản 10 · Tải dữ liệu bền hơn trên iPhone</p>
+      <p class="hint">Bản 11 · Thêm trang đo bộ nhớ</p>
       <details id="startup-diagnostics" hidden><summary>Thông tin mở game</summary><pre id="startup-report"></pre><button id="copy-startup-report" type="button">Sao chép thông tin</button><p id="copy-startup-status" role="status"></p></details>
     </div>
   </section>
@@ -72,6 +72,7 @@
       <p id="offline-transfer" role="status" hidden></p>
       <button id="offline-button" type="button" disabled>Tải để chơi offline</button>
       <p id="install-tip">Để mở như ứng dụng: Chia sẻ → Thêm vào Màn hình chính.</p>
+      <p class="hint"><a href="memory-probe.html" style="color:var(--accent)">Đo giới hạn bộ nhớ của máy</a> — giúp tìm nguyên nhân game bị tắt khi vào màn chơi.</p>
       <p id="update-tip" hidden>Có bản cập nhật. Hãy lưu trong game, rồi đóng mọi cửa sổ game và mở lại.</p>
       <p class="hint">Dữ liệu web được lưu trên thiết bị này. Xóa dữ liệu trang web có thể xóa cả tiến trình và nội dung offline.</p>
       <section class="save-tools" aria-label="Sao lưu tiến trình">

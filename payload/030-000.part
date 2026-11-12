@@ -1,208 +1,78 @@
 (() => {
   'use strict';
-  const MAX_FILE = 8 * 1024 * 1024, MAX_TOTAL = 32 * 1024 * 1024, MAX_TEXT = 48 * 1024 * 1024;
-  const fileName = /^(?:saves_index|save_\d+(?:_day\d+_\d{8}-\d{6})?)\.es3$/;
-  const utf8 = new TextEncoder(), decoder = new TextDecoder('utf-8', { fatal: true });
-  const fail = message => { throw new Error(message); };
-  const hash = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
-
-  // MD5 is only Unity's documented URL-to-directory mapping, never an integrity check.
-  function md5(text) {
-    const bytes = utf8.encode(text), size = Math.ceil((bytes.length + 9) / 64) * 64;
-    const data = new Uint8Array(size); data.set(bytes); data[bytes.length] = 128;
-    const view = new DataView(data.buffer); view.setUint32(size - 8, bytes.length * 8, true);
-    const shifts = [7,12,17,22,5,9,14,20,4,11,16,23,6,10,15,21];
-    let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
-    for (let offset = 0; offset < size; offset += 64) {
-      let a = a0, b = b0, c = c0, d = d0;
-      for (let i = 0; i < 64; i++) {
-        const group = Math.floor(i / 16);
-        const f = group === 0 ? (b & c) | (~b & d) : group === 1 ? (d & b) | (~d & c) : group === 2 ? b ^ c ^ d : c ^ (b | ~d);
-        const g = group === 0 ? i : group === 1 ? (5*i+1)%16 : group === 2 ? (3*i+5)%16 : (7*i)%16;
-        const sum = (a + f + Math.floor(Math.abs(Math.sin(i+1)) * 4294967296) + view.getUint32(offset + 4*g, true)) | 0;
-        const shift = shifts[group*4 + i%4], rotated = (sum << shift) | (sum >>> (32-shift));
-        a = d; d = c; c = b; b = (b + rotated) | 0;
-      }
-      a0 = (a0+a)|0; b0 = (b0+b)|0; c0 = (c0+c)|0; d0 = (d0+d)|0;
+  const byId=id=>document.getElementById(id), saves=window.ProbablyStolenSaves;
+  const status=byId('backup-status'), input=byId('backup-file'), confirm=byId('backup-confirm');
+  let busy=false, started=false, ready=false, candidate=null, downloadUrl=null, downloadFile=null;
+  const root=saves.storageRoot(location.href);
+  function buttons() {
+    byId('backup-export').disabled=busy || (started && !ready);
+    input.disabled=busy || started || !navigator.locks;
+    confirm.disabled=busy || started;
+    byId('backup-cancel').disabled=busy;
+  }
+  function clearCandidate() { candidate=null;input.value='';byId('backup-preview').hidden=true; }
+  async function operate(action) {
+    if(busy) return;
+    busy=true;buttons();
+    try { await action(); }
+    catch(error) { status.textContent=error.message || 'Chưa xử lý được bản sao. Hãy thử lại.'; }
+    finally { busy=false;buttons(); }
+  }
+  window.ProbablyStolenSaveUI=Object.freeze({async prepareToPlay() {
+    if(busy) throw new Error('Hãy đợi thao tác sao lưu hoàn tất rồi bấm Chơi.');
+    busy=true;buttons();
+    try {
+      if(navigator.locks) await saves.acquireSession();
+      started=true;clearCandidate();
+      byId('backup-import-hint').textContent='Để nhập bản sao, đóng rồi mở lại ứng dụng và chọn file trước khi bấm Chơi.';
+    } finally {busy=false;buttons();}
+  }});
+  window.addEventListener('probably-stolen-ready',()=>{ready=true;buttons();});
+  byId('backup-export').addEventListener('click',()=>operate(async()=>{
+    byId('backup-download').hidden=true;byId('backup-share').hidden=true;
+    status.textContent='Đang chuẩn bị bản sao điểm lưu gần nhất…';
+    await saves.acquireSession();
+    if(started) {
+      const result=await window.ProbablyStolenPWA.requestCheckpoint('backup-export');
+      if(!result.supported) throw new Error('Game chưa sẵn sàng đồng bộ save.');
     }
-    const result = new DataView(new ArrayBuffer(16));
-    [a0,b0,c0,d0].forEach((word,i) => result.setUint32(4*i,word,true));
-    return Array.from(new Uint8Array(result.buffer), b => b.toString(16).padStart(2,'0')).join('');
-  }
-  function storageRoot(href) {
-    const url = new URL(href);
-    if (!['http:','https:'].includes(url.protocol)) fail('Save cần địa chỉ HTTP hoặc HTTPS.');
-    const clean = url.href.split('?')[0].split('#')[0];
-    return '/idbfs/' + md5(clean.slice(0, clean.lastIndexOf('/')));
-  }
-  function checkRoot(root) { if (!/^\/idbfs\/[a-f0-9]{32}$/.test(root)) fail('Đường dẫn save không hợp lệ.'); }
-  function parseES3(text) {
-    // ES3 writes integer dictionary keys without quotes. Quote only those tokens
-    // outside strings for structural inspection; the archived bytes stay untouched.
-    const parts=[]; let inString=false, escaped=false, keyPosition=false, copied=0;
-    for(let i=0;i<text.length;i++) {
-      const c=text[i];
-      if(inString) {
-        if(escaped) escaped=false;
-        else if(c==='\\') escaped=true;
-        else if(c==='"') inString=false;
-        continue;
-      }
-      if(c==='"') {inString=true;keyPosition=false;continue;}
-      if(c==='{' || c===',') {keyPosition=true;continue;}
-      if(/\s/.test(c)) continue;
-      if(keyPosition && (c==='-' || /[0-9]/.test(c))) {
-        let end=i+(c==='-'?1:0),digits=end;
-        while(end<text.length && /[0-9]/.test(text[end])) end++;
-        let colon=end;while(colon<text.length && /\s/.test(text[colon])) colon++;
-        if(end>digits && text[colon]===':') {
-          parts.push(text.slice(copied,i),'"',text.slice(i,end),'"');copied=end;i=end-1;
-        }
-      }
-      keyPosition=false;
-    }
-    parts.push(text.slice(copied));
-    return JSON.parse(parts.join(''));
-  }
-  function checkPayload(name, bytes) {
-    let value;
-    try { value = parseES3(decoder.decode(bytes)); } catch (_) { fail('File save bị hỏng: ' + name); }
-    if (!value || Array.isArray(value) || typeof value !== 'object') fail('Nội dung save không hợp lệ.');
-    if (name === 'saves_index.es3') return;
-    const slot = Number(/^save_(\d+)/.exec(name)[1]);
-    const embeddedSlot=value.playerStore?.value?.saveSlotId;
-    if (value.playerStore?.__type !== 'PlayerStore,Assembly-CSharp' || value.storeStation?.__type !== 'StoreStation,Assembly-CSharp' ||
-        !Number.isSafeInteger(slot) || slot < 0 || slot > 2147483647 || !Number.isSafeInteger(embeddedSlot) || embeddedSlot < 0 ||
-        !Number.isSafeInteger(value.storeStation?.value?.dayCounter)) fail('File không phải save hợp lệ của game: ' + name);
-    // Original DuplicateSlot copies bytes under a new filename without rewriting
-    // embedded saveSlotId; the load handler supplies the destination slot itself.
-    if (value.playerStore.value.saveVersion !== 'VERSION 100-Rev12') fail('Phiên bản save chưa được hỗ trợ: ' + name);
-  }
-  function toBase64(bytes) {
-    let text = '';
-    for (let i=0; i<bytes.length; i+=16384) text += String.fromCharCode(...bytes.subarray(i,i+16384));
-    return btoa(text);
-  }
-  async function validateArchive(text) {
-    if (typeof text !== 'string' || text.length > MAX_TEXT) fail('Bản sao vượt giới hạn 48 MB.');
-    let archive;
-    try { archive = JSON.parse(text); } catch (_) { fail('Không đọc được file bản sao.'); }
-    if (archive?.format !== 'probably-stolen-save-backup' || archive.version !== 1 ||
-        !Array.isArray(archive.files) || archive.files.length < 2 || archive.files.length > 512) fail('Định dạng bản sao không được hỗ trợ.');
-    const names = new Set(), files = []; let total = 0;
-    for (const file of archive.files) {
-      if (!file || typeof file.name !== 'string' || !fileName.test(file.name) || names.has(file.name)) fail('Tên file save không hợp lệ hoặc bị trùng.');
-      names.add(file.name);
-      if (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > MAX_FILE || (total += file.size) > MAX_TOTAL) fail('Dữ liệu save vượt giới hạn cho phép.');
-      if (typeof file.data !== 'string' || file.data.length !== 4*Math.ceil(file.size/3) || !/^[A-Za-z0-9+/]*={0,2}$/.test(file.data) ||
-          typeof file.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(file.sha256)) fail('Dữ liệu bản sao không hợp lệ.');
-      const binary = atob(file.data), bytes = Uint8Array.from(binary, c=>c.charCodeAt(0));
-      if (bytes.length !== file.size || btoa(binary) !== file.data || await hash(bytes) !== file.sha256) fail('Bản sao bị thiếu hoặc đã thay đổi: ' + file.name);
-      checkPayload(file.name, bytes);
-      files.push({name:file.name, bytes});
-    }
-    if (!names.has('saves_index.es3') || !files.some(file=>/^save_\d+\.es3$/.test(file.name))) fail('Bản sao thiếu danh sách hoặc điểm lưu chính.');
-    return {files, totalBytes:total, createdAt:archive.createdAt};
-  }
-  async function createArchive(files, buildVersion) {
-    if (!Array.isArray(files) || files.length > 512) fail('Quá nhiều file save.');
-    let total=0;
-    const archive = {format:'probably-stolen-save-backup', version:1, createdAt:new Date().toISOString(), buildVersion, files:[]};
-    for (const file of files) {
-      if (!(file.bytes instanceof Uint8Array) || file.bytes.length > MAX_FILE || (total+=file.bytes.length)>MAX_TOTAL) fail('Dữ liệu save vượt giới hạn cho phép.');
-      archive.files.push({name:file.name, size:file.bytes.length, sha256:await hash(file.bytes), data:toBase64(file.bytes)});
-    }
-    await validateArchive(JSON.stringify(archive));
-    return archive;
-  }
-
-  function openDatabase() {
-    return new Promise((resolve,reject) => {
-      let settled = false;
-      const request = indexedDB.open('/idbfs',21); // Pinned Unity 6000.3.28f1 IDBFS schema.
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        const store = db.objectStoreNames.contains('FILE_DATA') ? request.transaction.objectStore('FILE_DATA') : db.createObjectStore('FILE_DATA');
-        if (!store.indexNames.contains('timestamp')) store.createIndex('timestamp','timestamp',{unique:false});
-      };
-      request.onerror = () => { settled=true; reject(request.error); };
-      request.onblocked = () => { settled=true; reject(new Error('Hãy đóng các cửa sổ game khác rồi thử lại.')); };
-      request.onsuccess = () => {
-        const db = request.result;
-        if (settled) { db.close(); return; }
-        db.onversionchange = () => db.close(); resolve(db);
-      };
+    const files=await saves.readFiles(root);
+    if(!files.some(file=>/^save_\d+\.es3$/.test(file.name))) throw new Error('Chưa có điểm lưu để sao lưu. Hãy tạo game hoặc hoàn thành một ngày trước.');
+    const manifest=await fetch('pwa-build.json').then(response=>response.ok?response.json():null).catch(()=>null);
+    const archive=await saves.createArchive(files,manifest?.version || 'unknown');
+    downloadFile=new File([JSON.stringify(archive)],'probably-stolen-'+new Date().toISOString().slice(0,10)+'.pssave.json',{type:'application/json'});
+    if(downloadUrl) URL.revokeObjectURL(downloadUrl);
+    downloadUrl=URL.createObjectURL(downloadFile);
+    const link=byId('backup-download');link.href=downloadUrl;link.download=downloadFile.name;link.hidden=false;
+    byId('backup-share').hidden=!(navigator.canShare?.({files:[downloadFile]}));
+    status.textContent=`Đã chuẩn bị ${files.length} file save. Bấm “Lưu bản sao” để giữ file trên thiết bị.`;
+  }));
+  byId('backup-share').addEventListener('click',async()=>{
+    try { await navigator.share({files:[downloadFile],title:'Probably Stolen — bản sao save'}); }
+    catch(error) { if(error.name!=='AbortError') status.textContent='Chưa chia sẻ được file. Bạn có thể bấm Lưu bản sao.'; }
+  });
+  input.addEventListener('change',()=>{
+    const file=input.files?.[0];clearCandidate();if(!file) return;
+    operate(async()=>{
+      if(started) throw new Error('Hãy mở lại ứng dụng để nhập bản sao trước khi bấm Chơi.');
+      if(file.size>saves.MAX_TEXT) throw new Error('Bản sao vượt giới hạn 48 MB.');
+      await saves.acquireSession();
+      status.textContent='Đang kiểm tra bản sao…';
+      const text=await file.text(), parsed=await saves.validateArchive(text);
+      candidate=text;
+      byId('backup-preview-text').textContent=`Bản sao có ${parsed.files.length} file (${Math.ceil(parsed.totalBytes/1024)} KB). Nhập sẽ thay thế toàn bộ save và lịch sử save trên địa chỉ này. Hãy xuất bản sao hiện tại trước nếu muốn giữ lại.`;
+      byId('backup-preview').hidden=false;
+      status.textContent='File hợp lệ. Chưa thay đổi save hiện có.';
     });
-  }
-  function relativeSave(root, key) {
-    if (typeof key !== 'string' || !key.startsWith(root+'/')) return null;
-    const name = key.slice(root.length+1);
-    return fileName.test(name) ? name : null;
-  }
-  async function readFiles(root) {
-    checkRoot(root);
-    const db = await openDatabase();
-    return new Promise((resolve,reject) => {
-      const files=[], transaction=db.transaction('FILE_DATA','readonly'), store=transaction.objectStore('FILE_DATA');
-      let failure, total=0;
-      transaction.oncomplete=()=>{db.close();resolve(files);};
-      transaction.onabort=()=>{db.close();reject(failure || transaction.error || new Error('Chưa đọc được save.'));};
-      const keys=store.getAllKeys();
-      keys.onsuccess=()=>{
-        const selected=keys.result.map(key=>({key,name:relativeSave(root,key)})).filter(file=>file.name);
-        if(selected.length>512){failure=new Error('Quá nhiều file save.');transaction.abort();return;}
-        for(const file of selected) {
-          const request=store.get(file.key);
-          request.onsuccess=()=>{
-            const contents=request.result?.contents;
-            // Unity IDBFS stores both signed and unsigned byte views. Preserve the
-            // view's exact byte range, including offsets into a larger backing buffer.
-            const bytes=ArrayBuffer.isView(contents) ? new Uint8Array(contents.buffer,contents.byteOffset,contents.byteLength)
-              : contents instanceof ArrayBuffer ? new Uint8Array(contents) : null;
-            if(!bytes) {failure=new Error('Không đọc được file save: '+file.name);transaction.abort();return;}
-            if(bytes.length>MAX_FILE || (total+=bytes.length)>MAX_TOTAL) {
-              failure=new Error('Dữ liệu save vượt giới hạn cho phép.');transaction.abort();return;
-            }
-            files.push({name:file.name,bytes});
-          };
-        }
-      };
-    });
-  }
-  async function replaceArchive(root, text) {
-    checkRoot(root);
-    const validated = await validateArchive(text); // Every byte checked before opening a write transaction.
-    const db = await openDatabase();
-    return new Promise((resolve,reject) => {
-      const transaction=db.transaction('FILE_DATA','readwrite'),store=transaction.objectStore('FILE_DATA');
-      let failure;
-      transaction.oncomplete=()=>{db.close();resolve(validated);};
-      transaction.onabort=()=>{db.close();reject(failure || transaction.error || new Error('Nhập bản sao thất bại; dữ liệu cũ được giữ lại.'));};
-      const keys=store.getAllKeys();
-      keys.onsuccess=()=>{
-        try {
-          for(const key of keys.result) if(relativeSave(root,key)) store.delete(key);
-          const timestamp=new Date();
-          if(!keys.result.includes(root)) store.put({mode:16877,timestamp},root);
-          for(const file of validated.files) store.put({mode:33206,timestamp,contents:file.bytes},root+'/'+file.name);
-        } catch(error) { failure=error;transaction.abort(); }
-      };
-    });
-  }
-  let sessionPromise;
-  function acquireSession() {
-    if(sessionPromise) return sessionPromise;
-    if(!globalThis.navigator?.locks) return Promise.reject(new Error('Trình duyệt chưa hỗ trợ khóa save. Hãy cập nhật iOS để nhập bản sao.'));
-    sessionPromise=new Promise((resolve,reject)=>{
-      // Unity mounts/synchronizes all /idbfs, including other URL-hashed roots.
-      // One lock per origin/database prevents a stale writer erasing a newer root.
-      navigator.locks.request('probably-stolen-idbfs-writer',{ifAvailable:true},lock=>{
-        if(!lock) { reject(new Error('Game đang mở trong cửa sổ khác. Hãy đóng cửa sổ đó rồi thử lại.'));return; }
-        resolve();
-        return new Promise(()=>{}); // The browser releases this only when the document closes.
-      }).catch(reject);
-    }).catch(error=>{sessionPromise=null;throw error;});
-    return sessionPromise;
-  }
-  globalThis.ProbablyStolenSaves=Object.freeze({md5,storageRoot,createArchive,validateArchive,readFiles,replaceArchive,acquireSession,MAX_TEXT});
+  });
+  confirm.addEventListener('click',()=>operate(async()=>{
+    if(started || !candidate) throw new Error('Hãy chọn lại bản sao trước khi mở game.');
+    await saves.acquireSession();
+    await saves.replaceArchive(root,candidate);
+    clearCandidate();
+    status.textContent='Đã nhập bản sao. Bấm Chơi, rồi chọn Load Game để tiếp tục.';
+  }));
+  byId('backup-cancel').addEventListener('click',()=>{clearCandidate();status.textContent='Đã hủy nhập; save hiện có được giữ nguyên.';});
+  if(!navigator.locks) byId('backup-import-hint').textContent='Cần cập nhật trình duyệt/iOS để dùng sao lưu và khôi phục.';
+  buttons();
 })();
