@@ -42,7 +42,7 @@
   window.ProbablyStolenStartup = Object.freeze({
     phase,
     begin(build) {
-      current = {release: 9, build, started: new Date().toISOString(), browser: navigator.userAgent, phase: 'Chuẩn bị khởi động'};
+      current = {release: 10, build, started: new Date().toISOString(), browser: navigator.userAgent, phase: 'Chuẩn bị khởi động'};
       persist();
     },
     fail(error) {

@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "70b5465a39247dea5277c2f3",
+  "sourceVersion": "bdf4884f0d7f4d49abaa1979",
   "files": [
     {
       "path": "Build/iphone-pwa-v8-shared-20261112.data.gz",
@@ -386,17 +386,17 @@
     {
       "path": "data-download.js",
       "url": "data-download.js",
-      "transferBytes": 3841,
-      "responseBytes": 3841,
+      "transferBytes": 8502,
+      "responseBytes": 8502,
       "contentEncoding": null,
-      "sha256": "d15bf78952733b177da0acd325ce9d636df85574ff9bcc4c94b4f02849dea71a",
-      "integrity": "sha256-0Vv3iVJzOxd9oKzTJc6dY234VXT/m8xMlLTwKEnepxo=",
+      "sha256": "45db0ba38f7cf0379c7df2f10d4c0fd352d3a58cb14103a5c728ce4d47525f07",
+      "integrity": "sha256-RdsLo4988DecffLxDUwP01LTpYyxQQOlxyjOTUdSXwc=",
       "required": true,
       "parts": [
         {
           "path": "payload/021-000.part",
-          "sha256": "d15bf78952733b177da0acd325ce9d636df85574ff9bcc4c94b4f02849dea71a",
-          "bytes": 3841
+          "sha256": "45db0ba38f7cf0379c7df2f10d4c0fd352d3a58cb14103a5c728ce4d47525f07",
+          "bytes": 8502
         }
       ]
     },
@@ -471,17 +471,17 @@
     {
       "path": "index.html",
       "url": "index.html",
-      "transferBytes": 8302,
-      "responseBytes": 8302,
+      "transferBytes": 8303,
+      "responseBytes": 8303,
       "contentEncoding": null,
-      "sha256": "06caf4062040e0072a92e157400c2fe0d837022b59105823ba11017ca770bc10",
-      "integrity": "sha256-Bsr0BiBA4AcqkuFXQAwv4Ng3AitZEFgjuhEBfKdwvBA=",
+      "sha256": "8f8617891460e2ea85881130f17234e5ab3b46fe1ec1e1d32635c66975699fde",
+      "integrity": "sha256-j4YXiRRg4uqFiBEw8XI05as7Rv4eweHTJjXGaXVpn94=",
       "required": true,
       "parts": [
         {
           "path": "payload/026-000.part",
-          "sha256": "06caf4062040e0072a92e157400c2fe0d837022b59105823ba11017ca770bc10",
-          "bytes": 8302
+          "sha256": "8f8617891460e2ea85881130f17234e5ab3b46fe1ec1e1d32635c66975699fde",
+          "bytes": 8303
         }
       ]
     },
@@ -573,34 +573,34 @@
     {
       "path": "shell.js",
       "url": "shell.js",
-      "transferBytes": 13797,
-      "responseBytes": 13797,
+      "transferBytes": 16532,
+      "responseBytes": 16532,
       "contentEncoding": null,
-      "sha256": "9c48ab62696f024c029f6edeac187a5d24a4e1850d5cccca7f0a486e346fbcb0",
-      "integrity": "sha256-nEirYmlvAkwCn27erBh6XSSk4YUNXMzKfwpIbjRvvLA=",
+      "sha256": "ca24acd889ebf5845bbceb93a56e6cbe91331a189c46a6d830d18f80ca81cb68",
+      "integrity": "sha256-yiSs2Inr9YRbvOuTpW5svpEzGhicRqbYMNGPgMqBy2g=",
       "required": true,
       "parts": [
         {
           "path": "payload/032-000.part",
-          "sha256": "9c48ab62696f024c029f6edeac187a5d24a4e1850d5cccca7f0a486e346fbcb0",
-          "bytes": 13797
+          "sha256": "ca24acd889ebf5845bbceb93a56e6cbe91331a189c46a6d830d18f80ca81cb68",
+          "bytes": 16532
         }
       ]
     },
     {
       "path": "startup.js",
       "url": "startup.js",
-      "transferBytes": 3182,
-      "responseBytes": 3182,
+      "transferBytes": 3183,
+      "responseBytes": 3183,
       "contentEncoding": null,
-      "sha256": "4747fdccd184a8b09a3f01dc8d439370a0fd3dcc47a31f10e995094a0500df39",
-      "integrity": "sha256-R0f9zNGEqLCaPwHcjUOTcKD9PcxHox8Q6ZUJSgUA3zk=",
+      "sha256": "117d023a067b037c5dc05f167d54ba91818fe76081800805381e1d647b1e26cb",
+      "integrity": "sha256-EX0COgZ7A3xdwF8WfVS6kYGP52CBgAgFOB4dZHseJss=",
       "required": true,
       "parts": [
         {
           "path": "payload/033-000.part",
-          "sha256": "4747fdccd184a8b09a3f01dc8d439370a0fd3dcc47a31f10e995094a0500df39",
-          "bytes": 3182
+          "sha256": "117d023a067b037c5dc05f167d54ba91818fe76081800805381e1d647b1e26cb",
+          "bytes": 3183
         }
       ]
     }

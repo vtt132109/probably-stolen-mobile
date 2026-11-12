@@ -15,7 +15,8 @@
   let lastStartupError = '';
   window.addEventListener('error', event => { if (launching && !window.unityInstance) lastStartupError = event.message || ''; });
   navigator.serviceWorker?.addEventListener('message', event => {
-    if (event.data?.type === 'ASSET_ERROR') lastStartupError = `Không tải được ${event.data.path}: ${event.data.message}`;
+    if (event.data?.type === 'ASSET_ERROR' && launching && !window.unityInstance)
+      lastStartupError = `Không tải được ${event.data.path}: ${event.data.message}`;
   });
 
   async function requireWorker() {
@@ -31,9 +32,18 @@
       navigator.serviceWorker.addEventListener('controllerchange',changed);changed();
     });
     const state=await sendToWorker('OFFLINE_STATUS');
-    const response=navigator.onLine ? await fetch('pwa-build.json',{cache:'no-store'}).catch(()=>null) : null;
-    if(response?.ok && (await response.json()).version!==state.version)
-      throw new Error('Có bản cập nhật đang chờ. Đóng tất cả tab game và cửa sổ ứng dụng, rồi mở lại. Không cần xóa save.');
+    // Best effort and bounded: a stalled network, captive portal or broken response must not block an
+    // offline-ready game.
+    let published=null;
+    if(navigator.onLine) {
+      const check=new AbortController(), timer=setTimeout(()=>check.abort(),5000);
+      try {
+        const response=await fetch('pwa-build.json',{cache:'no-store',signal:check.signal});
+        if(response.ok) published=(await response.json())?.version;
+      } catch (_) { published=null; } finally { clearTimeout(timer); }
+    }
+    if(typeof published==='string' && published!==state.version)
+      throw Object.assign(new Error('Có bản cập nhật đang chờ. Đóng tất cả tab game và cửa sổ ứng dụng, rồi mở lại. Không cần xóa save.'), {userAction: true});
   }
 
   // The game must register real save/visibility hooks. This shell never claims a save occurred.
@@ -104,28 +114,51 @@
   byId('play-button').addEventListener('click', async () => {
     if (launching || downloading) return;
     launching = true;
-    let fetchDataWithProgress;
+    let fetchDataWithProgress, wasmLoader;
+    const downloads = new AbortController(); // Stops the other transfer once startup has failed.
     try {
       if(!window.ProbablyStolenSaveUI) throw new Error('Chưa tải đủ giao diện. Hãy tải lại ứng dụng.');
+      // A busy backup is an instruction to the player, not a startup failure.
       await window.ProbablyStolenSaveUI.prepareToPlay();
+    } catch (error) { launching = false; loadStatus.textContent = error.message; return; }
+    try {
       if(window.unityBuild.requiresWorker) {
+        loadStatus.textContent = 'Đang kiểm tra bộ tải…';
         await requireWorker();
+        // Journal from here on; a pending-update notice must not replace the previous real report.
+        window.ProbablyStolenStartup.begin(window.unityBuild.config.dataUrl);
+        window.ProbablyStolenStartup.phase('Chuẩn bị bộ tải');
         const build = await sendToWorker('UNITY_DATA_MANIFEST');
-        fetchDataWithProgress = window.ProbablyStolenDownloads.createDataFetcher(build, window.unityBuild.config.dataUrl);
+        fetchDataWithProgress = window.ProbablyStolenDownloads.createDataFetcher(build, window.unityBuild.config.dataUrl, {signal: downloads.signal});
+        if (build.virtualFiles?.some(file => new URL(file.url, location.href).href === new URL(window.unityBuild.config.codeUrl, location.href).href))
+          wasmLoader = window.ProbablyStolenDownloads.createWasmLoader(build, window.unityBuild.config.codeUrl, {signal: downloads.signal});
       }
     }
-    catch (error) { launching = false; loadStatus.textContent = error.message; return; }
-    window.ProbablyStolenStartup.begin(window.unityBuild.config.dataUrl);
+    catch (error) {
+      launching = false;
+      loadStatus.textContent = error.message;
+      if (!error.userAction) {
+        window.ProbablyStolenStartup.begin(window.unityBuild.config.dataUrl); // Record loader preparation failures too.
+        window.ProbablyStolenStartup.fail(error);
+      }
+      return;
+    }
+    if (!window.unityBuild.requiresWorker) window.ProbablyStolenStartup.begin(window.unityBuild.config.dataUrl);
     byId('play-button').hidden = true;
     byId('load-progress').hidden = false;
     loadStatus.textContent = 'Đang tải game…';
     byId('load-error-details').hidden = true;
     const script = document.createElement('script');
     script.src = window.unityBuild.loaderUrl;
+    let failed = false;
     const fail = error => {
+      if (failed) return;
+      failed = true;
+      downloads.abort();
       console.error('Game loading failed', error);
       loadStatus.textContent = 'Chưa mở được game. Xem chi tiết bên dưới rồi thử lại.';
       const reason = error?.message || (typeof error === 'string' ? error : `Không tải được bộ khởi động: ${script.src}`);
+      if (lastStartupError && reason.includes(lastStartupError)) lastStartupError = '';
       window.ProbablyStolenStartup.fail([reason, lastStartupError].filter(Boolean).join('\n'));
       byId('load-error-message').textContent = [reason,lastStartupError,`Chế độ: ${window.matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'Ứng dụng' : 'Trình duyệt'}`].filter(Boolean).join('\n').slice(0,2000);
       byId('load-error-details').hidden = false;
@@ -139,9 +172,10 @@
         loadStatus.textContent = 'Đang nạp dữ liệu game…';
         window.ProbablyStolenStartup.phase('Nạp dữ liệu game');
         let initializingScene = false;
-        window.unityInstance = await createUnityInstance(canvas, {
+        const starting = createUnityInstance(canvas, {
           ...window.unityBuild.config,
           ...(fetchDataWithProgress ? {fetchDataWithProgress} : {}),
+          ...(wasmLoader ? {instantiateWasm: wasmLoader.instantiateWasm} : {}),
           matchWebGLToCanvasSize: false,
           // Retina phones otherwise render up to nine pixels per CSS pixel.
           // Keep readable text without paying that full fill-rate/framebuffer cost.
@@ -153,11 +187,19 @@
               window.ProbablyStolenStartup.phase('Khởi tạo cảnh game');
             }
           },
-          showBanner(message, type) { if (type === 'error') { lastStartupError=message;loadStatus.textContent = message; } },
+          showBanner(message, type) {
+            if (type !== 'error') return;
+            lastStartupError=message;loadStatus.textContent = message;
+            // e.g. framework.js could not load: the loader never settles, so end the attempt visibly.
+            if (!window.unityInstance) fail(new Error(message));
+          },
         }, progress => {
+          lastStartupError = ''; // A later part arrived: an earlier transient transfer error is not the cause.
           byId('load-progress').value = progress;
           if (!initializingScene) window.ProbablyStolenStartup.phase('Nạp dữ liệu game', progress);
         });
+        // A WASM transfer failure happens inside Emscripten; surface its real reason.
+        window.unityInstance = await (wasmLoader ? Promise.race([starting, wasmLoader.failure]) : starting);
         window.ProbablyStolenStartup.ready(window.unityInstance);
         byId('launch-panel').hidden = true;
         canvas.focus();

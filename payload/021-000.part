@@ -1,14 +1,33 @@
 (() => {
   'use strict';
-  // Read verified parts directly into one destination buffer. Do not send a single
-  // ~300 MB synthetic response through the service worker/browser stream bridge.
-  function createDataFetcher(build, dataUrl) {
-    const target = new URL(dataUrl, location.href);
+  // Read verified parts directly in the page. Do not send a single long synthetic
+  // response (~300 MB data, ~55 MB WASM) through the service worker stream bridge.
+  const ATTEMPTS = 4;
+  const BACKOFF_MS = [1000, 3000, 6000];
+  // The worker answers only after a whole part is downloaded and integrity-checked,
+  // so this is a per-part budget sized for slow mobile links (>= 24 KiB/s). The worker
+  // abandons its own transfer at the same rate; the page waits 30 s longer so it sees why.
+  const MIN_PART_TIMEOUT_MS = 120000;
+  const SLOWEST_BYTES_PER_SECOND = 24 * 1024;
+  const PAGE_GRACE_MS = 30000;
+
+  class DamagedPartError extends Error {}
+
+  function partTimeoutMs(bytes) {
+    return Math.max(MIN_PART_TIMEOUT_MS, Math.ceil(bytes / SLOWEST_BYTES_PER_SECOND) * 1000) + PAGE_GRACE_MS;
+  }
+
+  function hex(buffer) {
+    return [...new Uint8Array(buffer)].map(value => value.toString(16).padStart(2, '0')).join('');
+  }
+
+  function resolveParts(build, url, missingMessage) {
+    const target = new URL(url, location.href);
     const file = build.virtualFiles?.find(file => new URL(file.url, location.href).href === target.href);
-    if (!file) throw new Error('Bản tải thiếu danh sách các phần dữ liệu game. Đóng ứng dụng rồi mở lại khi có mạng.');
+    if (!file) throw new Error(missingMessage);
     const assets = new Map(build.files.map(file => [new URL(file.url, location.href).href, file]));
-    const parts = file.parts.map(url => {
-      const resolved = new URL(url, location.href), part = assets.get(resolved.href);
+    const parts = file.parts.map(partUrl => {
+      const resolved = new URL(partUrl, location.href), part = assets.get(resolved.href);
       if (resolved.origin !== location.origin || !part || !Number.isSafeInteger(part.responseBytes) ||
           part.responseBytes <= 0 || part.contentEncoding || !/^[a-f0-9]{64}$/.test(part.sha256))
         throw new Error('Danh sách phần dữ liệu game không hợp lệ.');
@@ -17,48 +36,114 @@
     if (!parts.length || !Number.isSafeInteger(file.responseBytes) || file.responseBytes <= 0 ||
         parts.reduce((sum, part) => sum + part.responseBytes, 0) !== file.responseBytes)
       throw new Error('Dung lượng các phần dữ liệu game không khớp.');
+    return {target, file, parts};
+  }
 
-    async function readPart(part, index) {
-      let failure;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 90000);
-        try {
-          const response = await fetch(part.url, {credentials:'same-origin',
-            cache:attempt ? 'reload' : 'default', signal:controller.signal});
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const bytes = new Uint8Array(await response.arrayBuffer());
-          if (bytes.length !== part.responseBytes) throw new Error(`Sai dung lượng: ${bytes.length}/${part.responseBytes} byte`);
-          const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
-            .map(value => value.toString(16).padStart(2,'0')).join('');
-          if (digest !== part.sha256) throw new Error('Dữ liệu không khớp mã kiểm tra SHA-256');
-          return bytes;
-        } catch (error) { failure = error; }
-        finally { clearTimeout(timer); }
-        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
-      }
-      throw new Error(`Không đọc được phần dữ liệu ${index + 1}/${parts.length} (${part.path}) sau 3 lần: ${failure?.message || failure}`);
+  const cancelled = () => new Error('Đã dừng tải vì phần còn lại của game không mở được.');
+
+  async function readPart(part, index, count, label, signal) {
+    let failure;
+    let reload = false; // Bypass caches only after evidence that a stored copy is damaged.
+    const timeout = partTimeoutMs(part.responseBytes);
+    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+      if (signal?.aborted) throw cancelled();
+      const controller = new AbortController();
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeout);
+      const stop = () => controller.abort();
+      signal?.addEventListener('abort', stop);
+      try {
+        const response = await fetch(part.url, {credentials:'same-origin',
+          cache:reload ? 'reload' : 'default', signal:controller.signal});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.length !== part.responseBytes)
+          throw new DamagedPartError(`Sai dung lượng: ${bytes.length}/${part.responseBytes} byte`);
+        if (hex(await crypto.subtle.digest('SHA-256', bytes)) !== part.sha256)
+          throw new DamagedPartError('Dữ liệu không khớp mã kiểm tra SHA-256');
+        return bytes;
+      } catch (error) {
+        failure = timedOut ? new Error(`hết thời gian chờ ${Math.round(timeout / 1000)} giây`) : error;
+        if (error instanceof DamagedPartError) reload = true;
+      } finally { clearTimeout(timer); signal?.removeEventListener('abort', stop); }
+      if (signal?.aborted) throw cancelled();
+      if (attempt < ATTEMPTS - 1) await new Promise(resolve => setTimeout(resolve, BACKOFF_MS[attempt]));
     }
+    throw new Error(`Không đọc được phần ${label} ${index + 1}/${count} (${part.path}) sau ${ATTEMPTS} lần: ${failure?.message || failure}`);
+  }
+
+  async function readAll(file, parts, label, onPart, signal) {
+    let body;
+    try { body = new Uint8Array(file.responseBytes); }
+    catch (error) { throw new Error(`Không cấp phát được vùng ${label} ${Math.round(file.responseBytes / 1048576)} MiB: ${error.message}`); }
+    let loaded = 0;
+    onPart?.(body, loaded);
+    for (let index = 0; index < parts.length; index++) {
+      const bytes = await readPart(parts[index], index, parts.length, label, signal);
+      body.set(bytes, loaded);
+      loaded += bytes.length;
+      onPart?.(body, loaded);
+    }
+    return body;
+  }
+
+  function createDataFetcher(build, dataUrl, {signal} = {}) {
+    const {target, file, parts} = resolveParts(build, dataUrl,
+      'Bản tải thiếu danh sách các phần dữ liệu game. Đóng ứng dụng rồi mở lại khi có mạng.');
     return async function fetchDataWithProgress(url, options = {}) {
       if (new URL(url, location.href).href !== target.href) throw new Error('Địa chỉ dữ liệu game không khớp bản tải.');
-      let body;
-      try { body = new Uint8Array(file.responseBytes); }
-      catch (error) { throw new Error(`Không cấp phát được vùng dữ liệu ${Math.round(file.responseBytes / 1048576)} MiB: ${error.message}`); }
       const response = {headers:new Headers({'Content-Type':'application/octet-stream',
-        'Content-Length':String(file.responseBytes)}), parsedBody:body};
-      let loaded = 0;
-      const progress = type => options.onProgress?.({type,response,total:body.length,loaded,
+        'Content-Length':String(file.responseBytes)}), parsedBody:null};
+      const progress = (type, body, loaded) => options.onProgress?.({type,response,total:file.responseBytes,loaded,
         lengthComputable:true,chunk:null});
-      progress('progress');
-      for (let index = 0; index < parts.length; index++) {
-        const bytes = await readPart(parts[index], index);
-        body.set(bytes, loaded);
-        loaded += bytes.length;
-        progress('progress');
-      }
-      progress('load');
+      response.parsedBody = await readAll(file, parts, 'dữ liệu', (body, loaded) => progress('progress', body, loaded), signal);
+      progress('load', response.parsedBody, file.responseBytes);
       return response;
     };
   }
-  window.ProbablyStolenDownloads = Object.freeze({createDataFetcher});
+
+  // Emscripten's documented Module.instantiateWasm hook: fetch the verified WASM parts in
+  // the page and compile them as they arrive (streaming, so no extra full-size copy is kept),
+  // falling back to a buffered compile where streaming compilation is unavailable.
+  // `failure` rejects with the real reason instead of a generic Emscripten abort.
+  function createWasmLoader(build, codeUrl, {signal} = {}) {
+    const {file, parts} = resolveParts(build, codeUrl,
+      'Bản tải thiếu danh sách các phần mã game. Đóng ứng dụng rồi mở lại khi có mạng.');
+    const label = 'mã game (.wasm)';
+    let reject;
+    const failure = new Promise((_, rejectFailure) => { reject = rejectFailure; });
+    failure.catch(() => {}); // Observed by the shell; never an unhandled rejection.
+    async function compile(imports) {
+      if (typeof WebAssembly.instantiateStreaming !== 'function' || typeof ReadableStream !== 'function') {
+        let bytes = await readAll(file, parts, label, null, signal);
+        try { return await WebAssembly.instantiate(bytes, imports); } finally { bytes = null; }
+      }
+      let transferError = null, index = 0;
+      const stream = new ReadableStream({
+        async pull(controller) {
+          if (index === parts.length) { controller.close(); return; }
+          try { controller.enqueue(await readPart(parts[index], index++, parts.length, label, signal)); }
+          catch (error) { transferError = error; controller.error(error); }
+        },
+      }, {highWaterMark: 0});
+      try {
+        return await WebAssembly.instantiateStreaming(new Response(stream, {headers: {'Content-Type': 'application/wasm'}}), imports);
+      } catch (error) {
+        if (transferError || signal?.aborted) throw transferError || cancelled();
+        // Streaming compilation itself failed (engine/memory); the verified bytes may still compile buffered.
+        let bytes = await readAll(file, parts, label, null, signal);
+        try { return await WebAssembly.instantiate(bytes, imports); } finally { bytes = null; }
+      }
+    }
+    function instantiateWasm(imports, receiveInstance) {
+      compile(imports).then(result => receiveInstance(result.instance, result.module), error => {
+        const known = error?.message?.startsWith('Không đọc được') || error?.message?.startsWith('Không cấp phát') || error?.message?.startsWith('Đã dừng tải');
+        reject(known ? error : new Error(`Không khởi tạo được ${label}: ${error?.message || error}`));
+      });
+      return {};
+    }
+    return {instantiateWasm, failure};
+  }
+
+  window.ProbablyStolenDownloads = Object.freeze({createDataFetcher, createWasmLoader, partTimeoutMs});
 })();
