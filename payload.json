@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "cf332be6a91d26634e93a555",
+  "sourceVersion": "70b5465a39247dea5277c2f3",
   "files": [
     {
       "path": "Build/iphone-pwa-v8-shared-20261112.data.gz",
@@ -63,17 +63,17 @@
     {
       "path": "Build/iphone-pwa-v8-shared-20261112.loader.js",
       "url": "Build/iphone-pwa-v8-shared-20261112.loader.js",
-      "transferBytes": 19431,
-      "responseBytes": 19431,
+      "transferBytes": 19328,
+      "responseBytes": 19328,
       "contentEncoding": null,
-      "sha256": "7f659470071ca3557a0701035d021c1cc74b4bdedc674ccfd98d47220b83cc24",
-      "integrity": "sha256-f2WUcAcco1V6BwEDXQIcHMdLS97cZ0zP2Y1HIguDzCQ=",
+      "sha256": "388172a6b87a4a7090a759d68d9ceeecd13eb5675174a59f9126457d858bb238",
+      "integrity": "sha256-OIFyprh6SnCQp1nWjZzu7NE+tWdRdKWfkSZFfYWLsjg=",
       "required": true,
       "parts": [
         {
           "path": "payload/002-000.part",
-          "sha256": "7f659470071ca3557a0701035d021c1cc74b4bdedc674ccfd98d47220b83cc24",
-          "bytes": 19431
+          "sha256": "388172a6b87a4a7090a759d68d9ceeecd13eb5675174a59f9126457d858bb238",
+          "bytes": 19328
         }
       ]
     },
@@ -384,6 +384,23 @@
       ]
     },
     {
+      "path": "data-download.js",
+      "url": "data-download.js",
+      "transferBytes": 3841,
+      "responseBytes": 3841,
+      "contentEncoding": null,
+      "sha256": "d15bf78952733b177da0acd325ce9d636df85574ff9bcc4c94b4f02849dea71a",
+      "integrity": "sha256-0Vv3iVJzOxd9oKzTJc6dY234VXT/m8xMlLTwKEnepxo=",
+      "required": true,
+      "parts": [
+        {
+          "path": "payload/021-000.part",
+          "sha256": "d15bf78952733b177da0acd325ce9d636df85574ff9bcc4c94b4f02849dea71a",
+          "bytes": 3841
+        }
+      ]
+    },
+    {
       "path": "graphics-settings.js",
       "url": "graphics-settings.js",
       "transferBytes": 3390,
@@ -394,7 +411,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/021-000.part",
+          "path": "payload/022-000.part",
           "sha256": "528f9fada8a46c98be4734fab36121f06edc53ee435f3b5cdc95d2ab1d6fb920",
           "bytes": 3390
         }
@@ -411,7 +428,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/022-000.part",
+          "path": "payload/023-000.part",
           "sha256": "235d36b1bd4c0a3bca6dc5845ae0d8b2a472ee7a53bd28a8425c826fd2a8e86a",
           "bytes": 2001
         }
@@ -428,7 +445,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/023-000.part",
+          "path": "payload/024-000.part",
           "sha256": "463b5fab040976806fc21305abe196c4c23b242b0628ee524072ecf0aaf7ac59",
           "bytes": 5546
         }
@@ -445,7 +462,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/024-000.part",
+          "path": "payload/025-000.part",
           "sha256": "c1d0cba8482aeb06bc64c6aa53073d2bf291537166b923f2b9906117e564cd05",
           "bytes": 367
         }
@@ -454,17 +471,17 @@
     {
       "path": "index.html",
       "url": "index.html",
-      "transferBytes": 8262,
-      "responseBytes": 8262,
+      "transferBytes": 8302,
+      "responseBytes": 8302,
       "contentEncoding": null,
-      "sha256": "53600963b933b7494f792ab1ea069345ae02e0c9ca72268c2406ff50ad88273f",
-      "integrity": "sha256-U2AJY7kzt0lPeSqx6gaTRa4C4MnKciaMJAb/UK2IJz8=",
+      "sha256": "06caf4062040e0072a92e157400c2fe0d837022b59105823ba11017ca770bc10",
+      "integrity": "sha256-Bsr0BiBA4AcqkuFXQAwv4Ng3AitZEFgjuhEBfKdwvBA=",
       "required": true,
       "parts": [
         {
-          "path": "payload/025-000.part",
-          "sha256": "53600963b933b7494f792ab1ea069345ae02e0c9ca72268c2406ff50ad88273f",
-          "bytes": 8262
+          "path": "payload/026-000.part",
+          "sha256": "06caf4062040e0072a92e157400c2fe0d837022b59105823ba11017ca770bc10",
+          "bytes": 8302
         }
       ]
     },
@@ -479,7 +496,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/026-000.part",
+          "path": "payload/027-000.part",
           "sha256": "aee52d47dbcd6d5fab727a1eb681b6a5b0109b3ca010868208c7d4a7e4412fb6",
           "bytes": 528
         }
@@ -496,7 +513,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/027-000.part",
+          "path": "payload/028-000.part",
           "sha256": "8d885efc909d9235338833311e1772d1248eefa99fa85b15678e4aff4ee01c3a",
           "bytes": 6229
         }
@@ -513,7 +530,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/028-000.part",
+          "path": "payload/029-000.part",
           "sha256": "d73cbea495313ddc7b5f23c825d456b7e2a9b36ab97e5867cfda85d8a3c5fc18",
           "bytes": 4940
         }
@@ -530,7 +547,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/029-000.part",
+          "path": "payload/030-000.part",
           "sha256": "fd8dbe083c7f0ff0b6c3dea7d9106c93719fe54ed8f68186305ed87c9c0be22b",
           "bytes": 12464
         }
@@ -547,7 +564,7 @@
       "required": true,
       "parts": [
         {
-          "path": "payload/030-000.part",
+          "path": "payload/031-000.part",
           "sha256": "f0db938f6ab9ccb89a9c35bb143cccbe5ad79eb4af0bafaa9d4eb207fa70a643",
           "bytes": 8336
         }
@@ -556,17 +573,17 @@
     {
       "path": "shell.js",
       "url": "shell.js",
-      "transferBytes": 13450,
-      "responseBytes": 13450,
+      "transferBytes": 13797,
+      "responseBytes": 13797,
       "contentEncoding": null,
-      "sha256": "d272f6d0bdd95a53f5a9eb42bbe341c01a20e64b301178cd9ded2311ead3e3db",
-      "integrity": "sha256-0nL20L3ZWlP1qetCu+NBwBog5kswEXjNne0jEerT49s=",
+      "sha256": "9c48ab62696f024c029f6edeac187a5d24a4e1850d5cccca7f0a486e346fbcb0",
+      "integrity": "sha256-nEirYmlvAkwCn27erBh6XSSk4YUNXMzKfwpIbjRvvLA=",
       "required": true,
       "parts": [
         {
-          "path": "payload/031-000.part",
-          "sha256": "d272f6d0bdd95a53f5a9eb42bbe341c01a20e64b301178cd9ded2311ead3e3db",
-          "bytes": 13450
+          "path": "payload/032-000.part",
+          "sha256": "9c48ab62696f024c029f6edeac187a5d24a4e1850d5cccca7f0a486e346fbcb0",
+          "bytes": 13797
         }
       ]
     },
@@ -576,13 +593,13 @@
       "transferBytes": 3182,
       "responseBytes": 3182,
       "contentEncoding": null,
-      "sha256": "eb82c5d7d47ca72afff1e7ec73264bf5afde39370f635ec909ad17816f272d95",
-      "integrity": "sha256-64LF19R8pyr/8efscyZL9a/eOTcPY17JCa0XgW8nLZU=",
+      "sha256": "4747fdccd184a8b09a3f01dc8d439370a0fd3dcc47a31f10e995094a0500df39",
+      "integrity": "sha256-R0f9zNGEqLCaPwHcjUOTcKD9PcxHox8Q6ZUJSgUA3zk=",
       "required": true,
       "parts": [
         {
-          "path": "payload/032-000.part",
-          "sha256": "eb82c5d7d47ca72afff1e7ec73264bf5afde39370f635ec909ad17816f272d95",
+          "path": "payload/033-000.part",
+          "sha256": "4747fdccd184a8b09a3f01dc8d439370a0fd3dcc47a31f10e995094a0500df39",
           "bytes": 3182
         }
       ]

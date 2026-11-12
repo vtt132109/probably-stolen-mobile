@@ -1,69 +1,64 @@
 (() => {
   'use strict';
-  const key = 'probably-stolen-graphics-v1';
-  const quality = document.getElementById('graphics-quality');
-  const fps = document.getElementById('graphics-fps');
-  const display = document.getElementById('graphics-display');
-  const fullscreen = document.getElementById('fullscreen-button');
-  const canvas = document.getElementById('unity-canvas');
-  const status = document.getElementById('graphics-status');
-  const scales = { low: 1, medium: 1.5, high: 2 };
-  let stored;
-  try { stored = JSON.parse(localStorage.getItem(key)); } catch (_) { /* Storage may be unavailable. */ }
-  if (stored && Object.hasOwn(scales, stored.quality)) quality.value = stored.quality;
-  if ([30, 60, 90].includes(stored?.fps)) fps.value = String(stored.fps);
-  if (['stretch', 'fit'].includes(stored?.display)) display.value = stored.display;
-  const pixelRatio = () => Math.min(window.devicePixelRatio || 1, scales[quality.value]);
-  function resize() {
-    document.documentElement.classList.toggle('stretch-game', display.value === 'stretch');
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    let width = Math.round(rect.width * pixelRatio());
-    let height = Math.round(rect.height * pixelRatio());
-    if (display.value === 'stretch' && rect.width > rect.height) {
-      // Render the entire original 16:9 scene, then let CSS fill the screen.
-      // Exact multiples avoid Unity's letterbox rounding leaving a dark edge.
-      const unit = Math.max(1, Math.round(Math.min(width / 16, height / 9)));
-      width = unit * 16;
-      height = unit * 9;
+  // Read verified parts directly into one destination buffer. Do not send a single
+  // ~300 MB synthetic response through the service worker/browser stream bridge.
+  function createDataFetcher(build, dataUrl) {
+    const target = new URL(dataUrl, location.href);
+    const file = build.virtualFiles?.find(file => new URL(file.url, location.href).href === target.href);
+    if (!file) throw new Error('Bản tải thiếu danh sách các phần dữ liệu game. Đóng ứng dụng rồi mở lại khi có mạng.');
+    const assets = new Map(build.files.map(file => [new URL(file.url, location.href).href, file]));
+    const parts = file.parts.map(url => {
+      const resolved = new URL(url, location.href), part = assets.get(resolved.href);
+      if (resolved.origin !== location.origin || !part || !Number.isSafeInteger(part.responseBytes) ||
+          part.responseBytes <= 0 || part.contentEncoding || !/^[a-f0-9]{64}$/.test(part.sha256))
+        throw new Error('Danh sách phần dữ liệu game không hợp lệ.');
+      return {...part, url:resolved.href};
+    });
+    if (!parts.length || !Number.isSafeInteger(file.responseBytes) || file.responseBytes <= 0 ||
+        parts.reduce((sum, part) => sum + part.responseBytes, 0) !== file.responseBytes)
+      throw new Error('Dung lượng các phần dữ liệu game không khớp.');
+
+    async function readPart(part, index) {
+      let failure;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 90000);
+        try {
+          const response = await fetch(part.url, {credentials:'same-origin',
+            cache:attempt ? 'reload' : 'default', signal:controller.signal});
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          if (bytes.length !== part.responseBytes) throw new Error(`Sai dung lượng: ${bytes.length}/${part.responseBytes} byte`);
+          const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+            .map(value => value.toString(16).padStart(2,'0')).join('');
+          if (digest !== part.sha256) throw new Error('Dữ liệu không khớp mã kiểm tra SHA-256');
+          return bytes;
+        } catch (error) { failure = error; }
+        finally { clearTimeout(timer); }
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+      }
+      throw new Error(`Không đọc được phần dữ liệu ${index + 1}/${parts.length} (${part.path}) sau 3 lần: ${failure?.message || failure}`);
     }
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
+    return async function fetchDataWithProgress(url, options = {}) {
+      if (new URL(url, location.href).href !== target.href) throw new Error('Địa chỉ dữ liệu game không khớp bản tải.');
+      let body;
+      try { body = new Uint8Array(file.responseBytes); }
+      catch (error) { throw new Error(`Không cấp phát được vùng dữ liệu ${Math.round(file.responseBytes / 1048576)} MiB: ${error.message}`); }
+      const response = {headers:new Headers({'Content-Type':'application/octet-stream',
+        'Content-Length':String(file.responseBytes)}), parsedBody:body};
+      let loaded = 0;
+      const progress = type => options.onProgress?.({type,response,total:body.length,loaded,
+        lengthComputable:true,chunk:null});
+      progress('progress');
+      for (let index = 0; index < parts.length; index++) {
+        const bytes = await readPart(parts[index], index);
+        body.set(bytes, loaded);
+        loaded += bytes.length;
+        progress('progress');
+      }
+      progress('load');
+      return response;
+    };
   }
-  function apply() {
-    resize();
-    const player = window.unityInstance;
-    if (player?.Module) {
-      player.Module.devicePixelRatio = pixelRatio();
-      player.SendMessage('ProbablyStolenMobileInput', 'SetFrameRate', fps.value);
-    }
-  }
-  function change() {
-    apply();
-    try {
-      localStorage.setItem(key, JSON.stringify({quality:quality.value, fps:Number(fps.value), display:display.value}));
-      status.textContent = 'Đã lưu cài đặt.';
-    } catch (_) { status.textContent = 'Đã áp dụng; trình duyệt chưa cho lưu cài đặt.'; }
-  }
-  quality.addEventListener('change', change);
-  fps.addEventListener('change', change);
-  display.addEventListener('change', change);
-  // Only expose native fullscreen when the browser actually supports it.
-  fullscreen.hidden = !document.fullscreenEnabled;
-  fullscreen.addEventListener('click', async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await document.documentElement.requestFullscreen();
-    } catch (_) { status.textContent = 'Trình duyệt chưa cho mở toàn màn hình. Hãy mở game từ Màn hình chính.'; }
-  });
-  document.addEventListener('fullscreenchange', () => {
-    fullscreen.textContent = document.fullscreenElement ? 'Thoát toàn màn hình' : 'Mở toàn màn hình';
-    resize();
-  });
-  window.addEventListener('resize', resize);
-  window.visualViewport?.addEventListener('resize', resize);
-  new ResizeObserver(resize).observe(canvas);
-  window.addEventListener('probably-stolen-ready', apply);
-  window.ProbablyStolenGraphics = Object.freeze({pixelRatio, resize});
-  resize();
+  window.ProbablyStolenDownloads = Object.freeze({createDataFetcher});
 })();

@@ -1,249 +1,65 @@
-(() => {
-  'use strict';
-  const byId = id => document.getElementById(id);
-  const canvas = byId('unity-canvas');
-  const loadStatus = byId('load-status');
-  const offlineStatus = byId('offline-status');
-  const offlineButton = byId('offline-button');
-  let registration;
-  let launching = false;
-  let downloading = false;
-  let gameHooks = null;
-  let checkpointInFlight = null;
-  let retryingCheckpoint = false;
-  let storageNeedsReload = false;
-  let lastStartupError = '';
-  window.addEventListener('error', event => { if (launching && !window.unityInstance) lastStartupError = event.message || ''; });
-  navigator.serviceWorker?.addEventListener('message', event => {
-    if (event.data?.type === 'ASSET_ERROR') lastStartupError = `Không tải được ${event.data.path}: ${event.data.message}`;
-  });
-
-  async function requireWorker() {
-    let setupTimer;
-    try { await Promise.race([workerSetup,new Promise((_,reject)=>{
-      setupTimer=setTimeout(()=>reject(new Error('Chưa chuẩn bị được bộ tải. Giữ kết nối mạng rồi thử lại.')),20000);
-    })]); } finally { clearTimeout(setupTimer); }
-    if (!registration) throw new Error('Chưa chuẩn bị được bộ tải. Hãy giữ kết nối mạng và mở lại ứng dụng.');
-    if (!navigator.serviceWorker.controller) await new Promise((resolve,reject) => {
-      const changed = () => { if(navigator.serviceWorker.controller) finish(); };
-      const timer = setTimeout(()=>finish(new Error('Bộ tải chưa sẵn sàng. Đóng ứng dụng rồi mở lại khi có mạng.')),20000);
-      function finish(error) { clearTimeout(timer);navigator.serviceWorker.removeEventListener('controllerchange',changed);error?reject(error):resolve(); }
-      navigator.serviceWorker.addEventListener('controllerchange',changed);changed();
-    });
-    const state=await sendToWorker('OFFLINE_STATUS');
-    const response=navigator.onLine ? await fetch('pwa-build.json',{cache:'no-store'}).catch(()=>null) : null;
-    if(response?.ok && (await response.json()).version!==state.version)
-      throw new Error('Có bản cập nhật đang chờ. Đóng tất cả tab game và cửa sổ ứng dụng, rồi mở lại. Không cần xóa save.');
-  }
-
-  // The game must register real save/visibility hooks. This shell never claims a save occurred.
-  window.ProbablyStolenPWA = Object.freeze({
-    registerGameHooks(hooks) { gameHooks = hooks; },
-    async requestCheckpoint(reason = 'manual') {
-      if (!gameHooks?.checkpoint) return { supported: false };
-      if (!checkpointInFlight) checkpointInFlight = Promise.resolve()
-        .then(() => gameHooks.checkpoint(reason)).then(() => ({ supported: true }))
-        .finally(() => { checkpointInFlight = null; });
-      return checkpointInFlight;
-    },
-  });
-
-  function showSaveFailure(event) {
-    storageNeedsReload = event?.detail?.phase === 'hydrate';
-    byId('save-warning-message').textContent = storageNeedsReload
-      ? 'Chưa đọc được dữ liệu lưu trên thiết bị. Hãy tải lại game để thử lại.'
-      : 'Chưa ghi được điểm lưu gần nhất xuống thiết bị. Giữ game mở và thử đồng bộ lại.';
-    if (!retryingCheckpoint) byId('save-retry-button').textContent = storageNeedsReload ? 'Tải lại game' : 'Thử đồng bộ lại';
-    byId('save-warning').hidden = false;
-    byId('save-sync-status').textContent = '';
-  }
-  window.addEventListener('probably-stolen-save-error', showSaveFailure);
-  byId('save-retry-button').addEventListener('click', async () => {
-    if (retryingCheckpoint) return;
-    if (storageNeedsReload) { window.location.reload(); return; }
-    retryingCheckpoint = true;
-    const button = byId('save-retry-button');
-    button.disabled = true;
-    button.textContent = 'Đang đồng bộ…';
-    try {
-      const result = await window.ProbablyStolenPWA.requestCheckpoint('manual-retry');
-      if (result.supported) {
-        byId('save-warning').hidden = true;
-        byId('save-sync-status').textContent = 'Đã đồng bộ điểm lưu gần nhất xuống thiết bị.';
-      } else {
-        byId('save-warning-message').textContent = 'Bản game chưa sẵn sàng đồng bộ dữ liệu. Hãy thử lại sau khi game tải xong.';
-      }
-    } catch (error) {
-      console.error('Checkpoint retry failed', error);
-      showSaveFailure();
-    } finally {
-      retryingCheckpoint = false;
-      button.disabled = false;
-      button.textContent = 'Thử đồng bộ lại';
-    }
-  });
-
-  function resize() {
-    document.documentElement.style.setProperty('--viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
-  }
-  window.addEventListener('resize', resize);
-  window.visualViewport?.addEventListener('resize', resize);
-  resize();
-
-  document.addEventListener('visibilitychange', () => {
-    const hidden = document.hidden;
-    gameHooks?.visibility?.(hidden);
-    window.dispatchEvent(new CustomEvent('probably-stolen-visibility', { detail: { hidden } }));
-    if (hidden) window.ProbablyStolenPWA.requestCheckpoint('hidden').catch(error => {
-      console.error('Checkpoint failed', error);
-      window.dispatchEvent(new CustomEvent('probably-stolen-save-error'));
-    });
-    else refreshOfflineStatus();
-  });
-
-  byId('play-button').addEventListener('click', async () => {
-    if (launching || downloading) return;
-    launching = true;
-    try {
-      if(!window.ProbablyStolenSaveUI) throw new Error('Chưa tải đủ giao diện. Hãy tải lại ứng dụng.');
-      await window.ProbablyStolenSaveUI.prepareToPlay();
-      if(window.unityBuild.requiresWorker) await requireWorker();
-    }
-    catch (error) { launching = false; loadStatus.textContent = error.message; return; }
-    window.ProbablyStolenStartup.begin(window.unityBuild.config.dataUrl);
-    byId('play-button').hidden = true;
-    byId('load-progress').hidden = false;
-    loadStatus.textContent = 'Đang tải game…';
-    byId('load-error-details').hidden = true;
-    const script = document.createElement('script');
-    script.src = window.unityBuild.loaderUrl;
-    const fail = error => {
-      console.error('Game loading failed', error);
-      loadStatus.textContent = 'Chưa mở được game. Xem chi tiết bên dưới rồi thử lại.';
-      const reason = error?.message || (typeof error === 'string' ? error : `Không tải được bộ khởi động: ${script.src}`);
-      window.ProbablyStolenStartup.fail([reason, lastStartupError].filter(Boolean).join('\n'));
-      byId('load-error-message').textContent = [reason,lastStartupError,`Chế độ: ${window.matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'Ứng dụng' : 'Trình duyệt'}`].filter(Boolean).join('\n').slice(0,2000);
-      byId('load-error-details').hidden = false;
-      byId('load-error-details').open = true;
-      byId('load-progress').hidden = true;
-      byId('retry-button').hidden = false;
-    };
-    script.onerror = fail;
-    script.onload = async () => {
-      try {
-        loadStatus.textContent = 'Đang nạp dữ liệu game…';
-        window.ProbablyStolenStartup.phase('Nạp dữ liệu game');
-        let initializingScene = false;
-        window.unityInstance = await createUnityInstance(canvas, {
-          ...window.unityBuild.config,
-          matchWebGLToCanvasSize: false,
-          // Retina phones otherwise render up to nine pixels per CSS pixel.
-          // Keep readable text without paying that full fill-rate/framebuffer cost.
-          devicePixelRatio: window.ProbablyStolenGraphics.pixelRatio(),
-          print(message) {
-            console.log(message);
-            if (String(message).startsWith('Loading player data')) {
-              initializingScene = true;
-              window.ProbablyStolenStartup.phase('Khởi tạo cảnh game');
-            }
-          },
-          showBanner(message, type) { if (type === 'error') { lastStartupError=message;loadStatus.textContent = message; } },
-        }, progress => {
-          byId('load-progress').value = progress;
-          if (!initializingScene) window.ProbablyStolenStartup.phase('Nạp dữ liệu game', progress);
-        });
-        window.ProbablyStolenStartup.ready(window.unityInstance);
-        byId('launch-panel').hidden = true;
-        canvas.focus();
-        window.dispatchEvent(new CustomEvent('probably-stolen-ready'));
-        await refreshOfflineStatus();
-      } catch (error) { fail(error); }
-    };
-    document.body.append(script);
-  });
-  byId('retry-button').addEventListener('click', () => window.location.reload());
-
-  function sendToWorker(type, progress) {
-    const worker = navigator.serviceWorker.controller || registration?.active;
-    if (!worker) return Promise.reject(new Error('Chưa có bản offline đang hoạt động.'));
-    return new Promise((resolve, reject) => {
-      const channel = new MessageChannel();
-      let timeout;
-      const armTimeout = () => { clearTimeout(timeout);timeout=setTimeout(()=>finish(new Error('Lượt tải mất quá nhiều thời gian. Hãy thử lại.')),type==='OFFLINE_STATUS'?20000:10*60*1000); };
-      function finish(error, result) {
-        clearTimeout(timeout);
-        channel.port1.close();
-        if (error) reject(error); else resolve(result);
-      }
-      channel.port1.onmessage = ({ data }) => {
-        if (data.type === 'OFFLINE_PROGRESS') { armTimeout();progress?.(data); }
-        else if (data.type === 'OFFLINE_ERROR') finish(new Error(data.message));
-        else if (data.type === 'OFFLINE_STATUS') finish(null, data);
-      };
-      armTimeout();worker.postMessage({ type }, [channel.port2]);
-    });
-  }
-
-  function renderOfflineStatus(state) {
-    if(state.ready) { byId('offline-progress').value=1;byId('offline-transfer').textContent='100% · Đã tải đủ'; }
-    offlineStatus.textContent = state.ready
-      ? 'Nội dung cần thiết đã tải đủ để chơi offline trên thiết bị này.'
-      : 'Nội dung offline chưa tải đủ. Cần kết nối mạng để tải phần còn lại.';
-    const size = state.bytes >= 1e9 ? `${(state.bytes / 1e9).toFixed(2)} GB` : `${Math.ceil(state.bytes / 1e6)} MB`;
-    offlineButton.textContent = state.ready ? 'Đã sẵn sàng offline' : `Tải để chơi offline · ${size}`;
-    offlineButton.disabled = state.ready;
-  }
-
-  async function refreshOfflineStatus() {
-    if (!registration || downloading) return;
-    try { renderOfflineStatus(await sendToWorker('OFFLINE_STATUS')); }
-    catch (_) { offlineStatus.textContent = 'Chưa kiểm tra được nội dung offline. Bạn vẫn có thể chơi khi có mạng.'; }
-  }
-
-  offlineButton.addEventListener('click', async () => {
-    if (downloading || (launching && !window.unityInstance)) return;
-    downloading = true;
-    byId('play-button').disabled = true;
-    byId('offline-progress').hidden = false;
-    byId('offline-progress').value = 0;
-    byId('offline-transfer').hidden = false;
-    byId('offline-transfer').textContent = 'Đang kiểm tra dữ liệu đã tải…';
-    offlineButton.disabled = true;
-    offlineStatus.textContent = 'Đang tải nội dung. Hãy giữ cửa sổ này mở…';
-    try {
-      renderOfflineStatus(await sendToWorker('OFFLINE_DOWNLOAD', progress => {
-        offlineStatus.textContent = `Đang chuẩn bị nội dung offline · ${progress.complete}/${progress.total}`;
-        const ratio = progress.totalBytes ? progress.completedBytes/progress.totalBytes : progress.complete/progress.total;
-        byId('offline-progress').value = Math.min(1,ratio);
-        byId('offline-transfer').textContent = Number.isFinite(progress.totalBytes)
-          ? `${Math.floor(ratio*100)}% · ${(progress.completedBytes/1e6).toFixed(1)} / ${(progress.totalBytes/1e6).toFixed(1)} MB · ${((progress.bytesPerSecond||0)/1e6).toFixed(2)} MB/s`
-          : `${Math.floor(ratio*100)}% · ${progress.complete}/${progress.total} tệp`;
-      }));
-    } catch (error) {
-      console.error('Offline download incomplete', error);
-      offlineStatus.textContent = 'Chưa tải đủ nội dung offline. Kiểm tra mạng và dung lượng trống, rồi thử lại.';
-      offlineButton.disabled = false;
-      offlineButton.textContent = 'Tiếp tục tải offline';
-    } finally { downloading = false;byId('play-button').disabled=false; }
-  });
-
-  async function setupPWA() {
-    if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) byId('install-tip').hidden = true;
-    if (!('serviceWorker' in navigator) || !window.isSecureContext) {
-      offlineStatus.textContent = 'Chế độ offline cần trình duyệt hỗ trợ và kết nối HTTPS.';
-      return;
-    }
-    try {
-      registration = await navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' });
-      await navigator.serviceWorker.ready;
-      const showUpdate = () => { if (registration.waiting) byId('update-tip').hidden = false; };
-      registration.addEventListener('updatefound', () => registration.installing?.addEventListener('statechange', showUpdate));
-      showUpdate();
-      await refreshOfflineStatus();
-    } catch (error) {
-      console.warn('Offline setup unavailable', error);
-      offlineStatus.textContent = 'Chế độ offline chưa sẵn sàng ở bản này. Bạn vẫn có thể chơi khi có mạng.';
-    }
-  }
-  const workerSetup = setupPWA();
-})();
+:root { color-scheme: dark; --ink: #111714; --paper: #f2eee1; --muted: #a6b3a8; --accent: #efc382; --edge: #485b4d; --viewport-height: 100dvh; font: 16px/1.5 system-ui, sans-serif; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--ink); color: var(--paper); }
+button, summary { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button { min-height: 44px; padding: .65rem 1.2rem; border: 1px solid var(--accent); border-radius: 3px; background: var(--accent); color: var(--ink); font: inherit; font-weight: 650; cursor: pointer; }
+button:disabled { opacity: .55; cursor: default; }
+button:focus-visible, summary:focus-visible, canvas:focus-visible { outline: 3px solid var(--paper); outline-offset: 3px; }
+[hidden] { display: none !important; }
+#game-frame { position: fixed; inset: 0; height: var(--viewport-height); padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+#unity-canvas { display: block; width: 100%; height: 100%; background: var(--ink); touch-action: none; -webkit-user-select: none; user-select: none; }
+@media (orientation: landscape) { .stretch-game #game-frame { padding: 0; } }
+#launch-panel { position: fixed; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: max(1.5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right)) max(4.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left)); background: var(--ink); }
+.launch-content { width: min(100%, 30rem); }
+.eyebrow { color: var(--muted); font: 600 .65rem/1.6 ui-monospace, monospace; letter-spacing: .14em; }
+h1 { margin: 1rem 0; font: 900 clamp(2.5rem, 8vw, 4.8rem)/.91 ui-monospace, monospace; letter-spacing: -.06em; }
+h1 span { color: var(--accent); }
+#load-status { min-height: 1.5em; }
+#load-progress { display: block; width: 100%; height: .55rem; margin: 1rem 0; accent-color: var(--accent); }
+#offline-progress { width: 100%; height: .75rem; accent-color: var(--accent); }
+#offline-transfer { font-variant-numeric: tabular-nums; color: var(--accent); }
+#load-error-details { margin-top: .75rem; }
+#load-error-message { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; max-height: 8rem; overflow: auto; }
+#startup-report { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; max-height: 9rem; overflow: auto; user-select: text; }
+.hint { max-width: 34rem; font-size: .8rem; color: var(--muted); }
+#orientation-tip { position: fixed; bottom: max(.6rem, env(safe-area-inset-bottom)); left: max(1rem, env(safe-area-inset-left)); right: max(1rem, env(safe-area-inset-right)); margin: 0; text-align: center; background: #111714e8; color: var(--paper); font-size: .8rem; pointer-events: none; padding: .5rem; }
+#app-menu { position: fixed; top: max(.5rem, env(safe-area-inset-top)); left: max(.5rem, env(safe-area-inset-left)); z-index: 5; max-width: min(23rem, calc(100vw - 2rem)); }
+#app-menu summary { list-style: none; min-height: 44px; display: grid; align-items: center; padding: .5rem .8rem; margin-right: auto; width: max-content; border: 1px solid var(--edge); border-radius: 3px; background: #111714e8; cursor: pointer; font-size: .8rem; }
+#app-menu summary::-webkit-details-marker { display: none; }
+.menu-content { background: var(--ink); border: 1px solid var(--edge); padding: 1rem; max-height: calc(var(--viewport-height) - 6rem); overflow-y: auto; box-shadow: 0 10px 40px #0009; }
+.menu-content p:first-child { margin-top: 0; }
+.menu-content p { font-size: .85rem; }
+.menu-content button { width: 100%; }
+.graphics-settings { margin: 0 0 1rem; padding: 0 0 1rem; border: 0; border-bottom: 1px solid var(--edge); }
+.graphics-settings legend { font-weight: 700; color: var(--accent); margin-bottom: .5rem; }
+.graphics-settings label { display: block; margin: .5rem 0 .25rem; font-size: .85rem; }
+.graphics-settings select { width: 100%; min-height: 44px; padding: .5rem; font: inherit; color: var(--paper); background: #1d2920; border: 1px solid var(--edge); border-radius: 3px; }
+@media (orientation: landscape) { #orientation-tip { display: none; } }
+@media (max-height: 480px) and (orientation: landscape) { .launch-content { width: min(75%, 40rem); } h1 { font-size: 2.8rem; margin: .4rem 0; } h1 br { display: none; } h1 span::before { content: ' '; } .eyebrow, .hint { margin: .5rem 0; } #launch-panel { padding-bottom: 1.2rem; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+:root { --controls-height: calc(64px + env(safe-area-inset-bottom)); }
+.has-mobile-controls #game-frame { height: calc(var(--viewport-height) - var(--controls-height)); padding-bottom: 0; }
+#mobile-controls { position: fixed; z-index: 4; left: 0; right: 0; top: calc(var(--viewport-height) - var(--controls-height)); height: var(--controls-height); display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; padding: 6px max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); background: var(--ink); border-top: 1px solid var(--edge); touch-action: none; -webkit-user-select: none; user-select: none; }
+#mobile-controls button { min-width: 44px; min-height: 44px; padding: 2px; font-size: 1.2rem; line-height: 1; background: #1d2920; border-color: var(--edge); color: var(--paper); touch-action: none; }
+#mobile-controls button span { display: block; font-size: .65rem; line-height: 1.2; margin-top: 4px; }
+#mobile-controls button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; vertical-align: middle; }
+#mobile-controls button[aria-pressed="true"] { background: var(--accent); color: var(--ink); border-color: var(--accent); }
+.has-mobile-controls #orientation-tip { bottom: calc(var(--controls-height) + .4rem); }
+.control-preference { min-height: 44px; display: flex; align-items: center; gap: .6rem; cursor: pointer; font-size: .85rem; }
+.control-preference input { width: 20px; height: 20px; accent-color: var(--accent); }
+#save-warning { position: fixed; z-index: 6; top: max(4rem, calc(env(safe-area-inset-top) + 3.5rem)); left: max(1rem, env(safe-area-inset-left)); width: min(34rem, calc(100vw - 2rem)); padding: 1rem; border: 2px solid var(--accent); border-radius: 3px; background: var(--ink); box-shadow: 0 8px 30px #0009; max-height: calc(var(--viewport-height) - 9rem); overflow-y: auto; }
+#save-warning p { margin: 0 0 .75rem; font-size: .85rem; }
+#save-warning button { min-height: 44px; font-size: .85rem; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.save-tools { border-top: 1px solid var(--edge); margin-top: 1rem; padding-top: 1rem; }
+.save-tools input { display: block; max-width: 100%; margin: .5rem 0; }
+.backup-download { display: inline-block; padding: .75rem; color: var(--accent); }
+.backup-download[hidden] { display: none; }
+@media (orientation: landscape) and (min-height: 368px) {
+  :root { --controls-width: calc(72px + env(safe-area-inset-right)); --controls-top: calc(50px + env(safe-area-inset-top)); }
+  .has-mobile-controls #game-frame { width: calc(100% - var(--controls-width)); right: var(--controls-width); height: var(--viewport-height); padding-right: 0; padding-bottom: env(safe-area-inset-bottom); }
+  #mobile-controls { left: auto; width: var(--controls-width); top: var(--controls-top); height: calc(var(--viewport-height) - var(--controls-top)); grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(6, minmax(0, 1fr)); padding-left: 8px; border-top: 0; border-left: 1px solid var(--edge); }
+  .has-mobile-controls #app-menu { top: max(6px, env(safe-area-inset-top)); left: auto; right: max(8px, env(safe-area-inset-right)); width: 56px; }
+  .has-mobile-controls #app-menu summary { width: 100%; min-height: 44px; padding: .2rem; text-align: center; font-size: .7rem; }
+  .has-mobile-controls #app-menu[open] .menu-content { position: absolute; right: 0; top: 48px; width: min(23rem, calc(100vw - 2rem)); max-height: calc(var(--viewport-height) - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+}

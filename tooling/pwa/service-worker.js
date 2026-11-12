@@ -21,9 +21,9 @@ async function verifiedFetch(url, file) {
   return response;
 }
 
-async function assetResponse(url, file) {
+async function assetResponse(url, file, refresh = false) {
   const cache = await caches.open(CACHE);
-  const cached = await cache.match(url);
+  const cached = refresh ? null : await cache.match(url);
   if (cached) return cached;
   const response = await verifiedFetch(url, file);
   try { await cache.put(url, response.clone()); } catch (_) { /* Online play remains available when cache quota is full. */ }
@@ -81,13 +81,16 @@ self.addEventListener('fetch', event => {
   }
   const file = assets.get(key);
   if (virtual.has(key)) event.respondWith(virtualResponse(virtual.get(key)));
-  else if (file) event.respondWith(assetResponse(key, file));
+  else if (file) event.respondWith(assetResponse(key, file, event.request.cache === 'reload'));
 });
 
 self.addEventListener('message', event => {
   if (!event.ports?.[0]) return;
   const port = event.ports[0];
-  if (event.data?.type === 'OFFLINE_STATUS') {
+  if (event.data?.type === 'UNITY_DATA_MANIFEST') {
+    port.postMessage({type:'UNITY_DATA_MANIFEST', version:BUILD.version,
+      files:BUILD.files, virtualFiles:BUILD.virtualFiles || []});
+  } else if (event.data?.type === 'OFFLINE_STATUS') {
     event.waitUntil(status().then(result => port.postMessage(result)).catch(error => port.postMessage({ type: 'OFFLINE_ERROR', message: error.message })));
   } else if (event.data?.type === 'OFFLINE_DOWNLOAD') {
     if (download) { port.postMessage({ type: 'OFFLINE_ERROR', message: 'Một lượt tải khác đang chạy.' }); return; }

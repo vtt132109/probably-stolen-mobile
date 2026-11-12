@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { createGunzip, createBrotliDecompress } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
+import { patchUnityLoader } from './patch-unity-loader.mjs';
 
 const generated = new Set(['sw.js', 'pwa-build.json']);
 const workerPath = fileURLToPath(new URL('./pwa/service-worker.js', import.meta.url));
@@ -43,6 +44,11 @@ export async function packageWebBuild(directory, { optionalPaths = [], chunkByte
   const root = resolve(directory);
   if (!(await lstat(root)).isDirectory()) throw new Error('Build directory is required');
   const paths = await inventory(root);
+  for (const path of paths.filter(path => /^Build\/.+\.loader\.js$/.test(path))) {
+    const full = join(root, path), original = await readFile(full, 'utf8');
+    const patched = patchUnityLoader(original);
+    if (patched !== original) await writeFile(full, patched);
+  }
   const html = await readFile(join(root, 'index.html'), 'utf8');
   if (/\{\{\{|^\s*#(?:if|endif)/m.test(html)) throw new Error('Unity template has not been built');
   for (const [kind, regex] of [

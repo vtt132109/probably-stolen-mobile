@@ -1,16 +1,117 @@
-{
-  "id": "./",
-  "name": "Probably Stolen — iPhone",
-  "short_name": "Probably Stolen",
-  "description": "Probably Stolen mobile development build.",
-  "start_url": "./",
-  "scope": "./",
-  "display": "standalone",
-  "orientation": "landscape",
-  "background_color": "#111714",
-  "theme_color": "#111714",
-  "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
-  ]
-}
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111714">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Probably Stolen">
+  <title>Probably Stolen</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="shell.css">
+</head>
+<body>
+  <main id="game-frame" aria-label="Probably Stolen">
+    <canvas id="unity-canvas" tabindex="0" aria-label="Màn hình game Probably Stolen"></canvas>
+  </main>
+  <section id="launch-panel" aria-labelledby="game-title">
+    <div class="launch-content">
+      <p class="eyebrow">BẢN THỬ CHO IPHONE</p>
+      <h1 id="game-title">PROBABLY<br><span>STOLEN</span></h1>
+      <p id="load-status" role="status" aria-live="polite">Sẵn sàng mở game.</p>
+      <progress id="load-progress" max="1" value="0" aria-label="Tiến trình tải game" hidden></progress>
+      <button id="play-button" type="button">Chơi</button>
+      <button id="retry-button" type="button" hidden>Thử tải lại</button>
+      <details id="load-error-details" hidden><summary>Chi tiết lỗi</summary><pre id="load-error-message"></pre></details>
+      <p class="hint">Xoay ngang iPhone để có thêm không gian thao tác.</p>
+      <p class="hint">Bản 9 · Sửa bộ tải dữ liệu trên iPhone</p>
+      <details id="startup-diagnostics" hidden><summary>Thông tin mở game</summary><pre id="startup-report"></pre><button id="copy-startup-report" type="button">Sao chép thông tin</button><p id="copy-startup-status" role="status"></p></details>
+    </div>
+  </section>
+  <p id="orientation-tip" role="status">Xoay ngang điện thoại để chơi thuận tiện hơn.</p>
+  <aside id="save-warning" role="alert" hidden>
+    <p id="save-warning-message"></p>
+    <button id="save-retry-button" type="button">Thử đồng bộ lại</button>
+  </aside>
+  <p id="save-sync-status" class="visually-hidden" role="status" aria-live="polite"></p>
+  <nav id="mobile-controls" aria-label="Điều khiển game bằng cảm ứng" hidden>
+    <button type="button" data-game-action="rotate_ccw" aria-label="Xoay vật phẩm sang trái" aria-pressed="false">↶ <span>Xoay trái</span></button>
+    <button type="button" data-game-action="rotate_cw" aria-label="Xoay vật phẩm sang phải" aria-pressed="false">↷ <span>Xoay phải</span></button>
+    <button type="button" data-game-action="flip_item" aria-label="Lật vật phẩm đang kéo" aria-pressed="false">↔ <span>Lật</span></button>
+    <button type="button" data-game-action="secondary_click" aria-label="Menu vật phẩm tại vị trí chạm cuối hoặc hạ súng" aria-pressed="false">⋯ <span>Menu vật</span></button>
+    <button type="button" data-game-action="menu_back" aria-label="Quay lại hoặc hủy" aria-pressed="false">← <span>Quay lại</span></button>
+    <button type="button" data-game-action="call_next_customer" aria-label="Gọi khách tiếp theo" aria-pressed="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M9 21h6"/></svg><span>Chuông</span></button>
+  </nav>
+  <details id="app-menu">
+    <summary aria-label="Cài đặt">Cài đặt</summary>
+    <div class="menu-content">
+      <fieldset class="graphics-settings">
+        <legend>Hình ảnh</legend>
+        <label for="graphics-display">Khung hình</label>
+        <select id="graphics-display"><option value="stretch" selected>Giãn kín màn hình</option><option value="fit">Giữ tỉ lệ gốc 16:9</option></select>
+        <p class="hint">Giãn kín khi xoay ngang, giữ đủ nội dung; hình sẽ hơi rộng hơn trên điện thoại dài.</p>
+        <button id="fullscreen-button" type="button" hidden>Mở toàn màn hình</button>
+        <label for="graphics-quality">Chất lượng</label>
+        <select id="graphics-quality"><option value="low">Thấp — nhẹ máy</option><option value="medium" selected>Vừa — cân bằng</option><option value="high">Cao — sắc nét</option></select>
+        <label for="graphics-fps">Giới hạn FPS</label>
+        <select id="graphics-fps"><option value="30">30 FPS — tiết kiệm pin</option><option value="60" selected>60 FPS</option><option value="90">90 FPS</option></select>
+        <p class="hint">Áp dụng ngay, tự lưu cho lần sau. FPS thực tế phụ thuộc màn hình và hiệu năng máy.</p>
+        <p id="graphics-status" role="status" aria-live="polite"></p>
+      </fieldset>
+      <label class="control-preference"><input id="touch-controls-enabled" type="checkbox"> Hiện nút cảm ứng</label>
+      <p class="hint">Các nút phụ được ẩn để dành chỗ cho game. Bật “Hiện nút cảm ứng” khi cần xoay, lật vật hoặc quay lại.</p>
+      <p class="hint">Giữ và kéo vật bằng một ngón; khi bật nút phụ, dùng ngón còn lại để xoay hoặc lật.</p>
+      <p class="hint">Khi đang ngắm súng, bấm Menu vật để hạ súng.</p>
+      <p class="hint">Việt hóa trong game: Hyu — mod VietnameseTranslation.</p>
+      <p id="offline-status" role="status" aria-live="polite">Đang kiểm tra khả năng chơi offline…</p>
+      <progress id="offline-progress" max="1" value="0" aria-label="Tiến trình tải offline" hidden></progress>
+      <p id="offline-transfer" role="status" hidden></p>
+      <button id="offline-button" type="button" disabled>Tải để chơi offline</button>
+      <p id="install-tip">Để mở như ứng dụng: Chia sẻ → Thêm vào Màn hình chính.</p>
+      <p id="update-tip" hidden>Có bản cập nhật. Hãy lưu trong game, rồi đóng mọi cửa sổ game và mở lại.</p>
+      <p class="hint">Dữ liệu web được lưu trên thiết bị này. Xóa dữ liệu trang web có thể xóa cả tiến trình và nội dung offline.</p>
+      <section class="save-tools" aria-label="Sao lưu tiến trình">
+        <button id="backup-export" type="button">Xuất bản sao save</button>
+        <a id="backup-download" class="backup-download" hidden>Lưu bản sao</a>
+        <button id="backup-share" type="button" hidden>Chia sẻ / Lưu vào Tệp</button>
+        <p class="hint">Bản sao chứa điểm lưu gần nhất và lịch sử save; không lưu thêm tiến trình giữa ngày.</p>
+        <label for="backup-file">Nhập bản sao save</label>
+        <input id="backup-file" type="file" accept=".json,application/json">
+        <p id="backup-import-hint" class="hint">Chọn bản sao trước khi bấm Chơi. File chỉ được đọc trên thiết bị này.</p>
+        <div id="backup-preview" hidden>
+          <p id="backup-preview-text"></p>
+          <button id="backup-confirm" type="button">Thay thế save bằng bản sao này</button>
+          <button id="backup-cancel" type="button">Hủy nhập</button>
+        </div>
+        <p id="backup-status" role="status" aria-live="polite"></p>
+      </section>
+    </div>
+  </details>
+  <script>
+    window.unityBuild = {
+      loaderUrl: "Build/iphone-pwa-v8-shared-20261112.loader.js",
+      config: {
+        dataUrl: "Build/iphone-pwa-v8-shared-20261112.data.gz",
+        frameworkUrl: "Build/iphone-pwa-v8-shared-20261112.framework.js.gz",
+        codeUrl: "Build/iphone-pwa-v8-shared-20261112.wasm.gz",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "Local Reconstruction",
+        productName: "Probably Stolen Mobile",
+        productVersion: "0.46D",
+        autoSyncPersistentDataPath: true
+      }
+    };
+  </script>
+  <script src="mobile-input.js"></script>
+  <script src="graphics-settings.js"></script>
+  <script src="startup.js"></script>
+  <script src="data-download.js"></script>
+  <script src="save-backup.js"></script>
+  <script src="save-backup-ui.js"></script>
+  <script src="shell.js"></script>
+</body>
+</html>
