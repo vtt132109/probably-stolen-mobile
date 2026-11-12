@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111714">
-  <title>Đo giới hạn bộ nhớ</title>
+  <title>Đo giới hạn bộ nhớ (bản 2)</title>
   <style>
     :root { color-scheme: dark; --ink: #111714; --paper: #f2eee1; --muted: #a6b3a8; --accent: #efc382; --edge: #485b4d; --bad: #f08b7a; font: 16px/1.5 system-ui, sans-serif; }
     * { box-sizing: border-box; }
@@ -28,8 +28,9 @@
 </head>
 <body>
 <main>
-  <h1>Đo giới hạn bộ nhớ trên thiết bị</h1>
+  <h1>Đo giới hạn bộ nhớ trên thiết bị · bản 2</h1>
   <p>Trang này xin thêm bộ nhớ từng bước cho đến khi trình duyệt từ chối hoặc iOS tắt trang. Mỗi bước được ghi lại <strong>trước khi</strong> xin, nên sau khi bị tắt chỉ cần mở lại trang này là thấy con số. Không đụng tới save game.</p>
+  <p class="muted">Bản 2 mặc định ghi <strong>dữ liệu ngẫu nhiên</strong> (không nén được) — trường hợp xấu nhất về RAM thật của máy; dữ liệu gần như toàn số 0 là trường hợp tốt nhất. Dữ liệu game nằm giữa hai mức này. Kết quả phụ thuộc các ứng dụng khác đang mở: nên đóng hết ứng dụng/tab khác và đo mỗi chế độ 2 lần. Đơn vị là MiB (1 MiB = 1.048.576 byte).</p>
   <p class="muted">Nên đóng game và các tab/ứng dụng khác trước khi đo. iOS có thể hiện "Đã có sự cố xảy ra liên tục" — đó là kết quả mong đợi; mở lại trang này.</p>
 
   <div id="last" class="box" hidden></div>
@@ -42,12 +43,14 @@
     <option value="audio">Âm thanh đã giải nén (Web Audio)</option>
     <option value="webgl">Texture WebGL (bộ nhớ đồ họa)</option>
   </select>
+  <label for="kind">Kiểu dữ liệu</label>
+  <select id="kind"><option value="random" selected>Ngẫu nhiên, không nén được (giống dữ liệu game)</option><option value="zero">Gần như toàn số 0, dễ nén (như bản 1, để so sánh)</option></select>
   <label for="step">Mỗi bước</label>
   <select id="step"><option value="8">8 MB</option><option value="16" selected>16 MB</option><option value="32">32 MB</option></select>
   <label for="cap">Dừng khi đạt</label>
-  <select id="cap"><option value="1024">1 GB</option><option value="2048">2 GB</option><option value="4096" selected>4 GB</option></select>
+  <select id="cap"><option value="1024">1 GB</option><option value="2048">2 GB</option><option value="4096" selected>4 GB</option><option value="6144">6 GB</option><option value="8192">8 GB</option></select>
 
-  <div id="live">0 MB</div>
+  <div id="live">0 MiB</div>
   <p id="status" role="status" aria-live="polite">Sẵn sàng.</p>
   <button id="start" type="button">Bắt đầu đo</button>
   <button id="copy" type="button" class="secondary">Sao chép kết quả</button>
@@ -55,29 +58,34 @@
   <p id="copy-status" class="muted" role="status"></p>
 
   <div class="box"><strong>Lịch sử đo</strong><pre id="history">Chưa có.</pre></div>
+  <div class="box" id="v1-box" hidden><strong>Lịch sử đo bản 1 (dữ liệu dễ nén)</strong><pre id="history-v1"></pre></div>
   <p class="muted"><a href="./">← Quay lại game</a></p>
 </main>
 <script>
 (() => {
   'use strict';
-  const KEY = 'probably-stolen-memory-probe-v1';
+  const KEY = 'probably-stolen-memory-probe-v2';
   const MB = 1048576, PAGE = 65536, DATA_BYTES = 298967749;
   const byId = id => document.getElementById(id);
   const modeNames = {game:'Giống game (285 MB dữ liệu + WASM)', wasm:'WebAssembly', buffer:'ArrayBuffer', audio:'Web Audio', webgl:'Texture WebGL'};
-  let running = false;
+  let running = false, used = false, currentRun = null;
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {runs: []}; } catch (_) { return {runs: []}; } }
   function save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); return true; } catch (_) { return false; } }
   const standalone = () => !!(window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone);
 
   function describe(run) {
-    const outcome = run.outcome === 'killed' ? (run.attemptMB > run.okMB
-        ? `BỊ TẮT khi đang xin lên ${run.attemptMB} MB (đã giữ được ${run.okMB} MB)`
-        : `BỊ TẮT sau khi đã giữ được ${run.okMB} MB`)
-      : run.outcome === 'refused' ? `Trình duyệt TỪ CHỐI ở ${run.attemptMB} MB (đã giữ được ${run.okMB} MB): ${run.error}`
-      : run.outcome === 'cap' ? `Đạt mức dừng ${run.okMB} MB, không bị tắt`
-      : run.outcome === 'running' ? `Đang đo… ${run.okMB} MB` : run.outcome;
-    return `${run.started.replace('T', ' ').slice(0, 19)} · ${modeNames[run.mode] || run.mode} · bước ${run.stepMB} MB · ${run.standalone ? 'Ứng dụng' : 'Trình duyệt'}\n  → ${outcome}`;
+    const outcome = run.outcome === 'interrupted' ? `DỪNG vì trang bị ẩn/chuyển ứng dụng ở ${run.okMB} MiB (không phải giới hạn)`
+      : run.outcome === 'killed' ? (run.attemptMB > run.okMB
+        ? `BỊ TẮT khi đang xin lên ${run.attemptMB} MiB (đã giữ được ${run.okMB} MiB)`
+        : `BỊ TẮT sau khi đã giữ được ${run.okMB} MiB`)
+      : run.outcome === 'refused' ? `Trình duyệt TỪ CHỐI ở ${run.attemptMB} MiB (đã giữ được ${run.okMB} MiB): ${run.error}`
+      : run.outcome === 'cap' ? `Đạt mức dừng ${run.okMB} MiB, không bị tắt (chưa biết giới hạn)`
+      : run.outcome === 'running' ? `Đang đo… ${run.okMB} MiB` : run.outcome;
+    const kind = run.kind === 'zero' ? 'dữ liệu dễ nén' : 'dữ liệu ngẫu nhiên';
+    const extra = [run.wasmMaxPages ? `WASM tối đa ${run.wasmMaxPages * 64 / 1024} MiB` : '', run.renderer ? `GPU ${run.renderer}` : '',
+      run.totalBytes ? `${run.totalBytes} byte` : ''].filter(Boolean).join(' · ');
+    return `${run.started.replace('T', ' ').slice(0, 19)} · ${modeNames[run.mode] || run.mode} · ${kind} · bước ${run.stepMB} MiB · ${run.standalone ? 'Ứng dụng' : 'Trình duyệt'}${extra ? '\n  ' + extra : ''}\n  → ${outcome}`;
   }
   function render() {
     const state = load();
@@ -85,19 +93,46 @@
     const last = state.runs.at(-1);
     if (last && last.outcome === 'killed') {
       byId('last').hidden = false; byId('last').className = 'box crash';
-      byId('last').textContent = `Lần đo trước bị iOS tắt: đã giữ được ${last.okMB} MB (${modeNames[last.mode]}). Đây là giới hạn gần đúng. Hãy "Sao chép kết quả" và gửi lại.`;
+      byId('last').textContent = `Lần đo trước bị tắt: đã giữ được ${last.okMB} MiB (${modeNames[last.mode]}). Đây là giới hạn gần đúng (±1 bước). Hãy "Sao chép kết quả" và gửi lại.`;
     }
   }
 
+  function renderV1() {
+    let old; try { old = JSON.parse(localStorage.getItem('probably-stolen-memory-probe-v1')); } catch (_) { old = null; }
+    if (!old?.runs?.length) return '';
+    const text = old.runs.slice().reverse().map(run => describe({...run, kind: 'zero',
+      outcome: run.outcome === 'running' ? 'killed' : run.outcome})).join('\n\n');
+    byId('v1-box').hidden = false; byId('history-v1').textContent = text; return text;
+  }
   // A run left in "running" means the page died mid-measurement: that is the result we want.
   (function recover() {
     const state = load();
     const last = state.runs.at(-1);
-    if (last && last.outcome === 'running') { last.outcome = 'killed'; last.recoveredAt = new Date().toISOString(); save(state); }
-    render();
+    if (last && last.outcome === 'running') {
+      last.outcome = last.hidden ? 'interrupted' : 'killed';
+      last.recoveredAt = new Date().toISOString();
+      last.navigation = performance.getEntriesByType?.('navigation')?.[0]?.type || '';
+      save(state);
+    }
+    render(); renderV1();
   })();
 
-  const touch = (bytes, offset = 0, length = bytes.length - offset) => { for (let i = offset; i < offset + length; i += 4096) bytes[i] = 1; };
+  let seed = 0x9e3779b9;
+  function fillRandom(bytes, offset = 0, length = bytes.length - offset) {
+    const words = Math.floor(length / 4), aligned = offset % 4 === 0;
+    if (aligned && words) {
+      const view = new Uint32Array(bytes.buffer, bytes.byteOffset + offset, words);
+      let x = seed;
+      for (let i = 0; i < words; i++) { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; view[i] = x; }
+      seed = x >>> 0 || 1;
+    }
+    for (let i = offset + (aligned ? words * 4 : 0); i < offset + length; i++) bytes[i] = (Math.random() * 256) | 0;
+  }
+  let kind = 'random';
+  const touch = (bytes, offset = 0, length = bytes.length - offset) => {
+    if (kind === 'random') return fillRandom(bytes, offset, length);
+    for (let i = offset; i < offset + length; i += 4096) bytes[i] = 1;
+  };
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   function allocator(mode, stepBytes) {
@@ -105,7 +140,7 @@
     if (mode === 'wasm' || mode === 'game') {
       let memory;
       for (const maximum of [65536, 49152, 32768, 16384]) {
-        try { memory = new WebAssembly.Memory({initial: 1, maximum}); break; } catch (_) { /* try a smaller reservation */ }
+        try { memory = new WebAssembly.Memory({initial: 1, maximum}); currentRun.wasmMaxPages = maximum; break; } catch (_) { /* try a smaller reservation */ }
       }
       if (!memory) throw new Error('Không tạo được WebAssembly.Memory');
       held.push(memory);
@@ -117,29 +152,52 @@
       const context = new Ctx();
       const frames = Math.floor(stepBytes / 8); // 2 channels x float32
       return { grow() { const buffer = context.createBuffer(2, frames, context.sampleRate);
-        for (let c = 0; c < 2; c++) { const data = buffer.getChannelData(c); for (let i = 0; i < data.length; i += 1024) data[i] = 0.001; }
+        for (let c = 0; c < 2; c++) { const data = buffer.getChannelData(c);
+          if (kind === 'random') { for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1; }
+          else for (let i = 0; i < data.length; i += 1024) data[i] = 0.001; }
         held.push(buffer); } };
     }
     if (mode === 'webgl') {
       const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
-      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-      if (!gl) throw new Error('Không có WebGL');
-      const side = Math.floor(Math.sqrt(stepBytes / 4)); const pixels = new Uint8Array(side * side * 4).fill(7);
-      return { grow() { const texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, side, side, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        gl.finish(); const error = gl.getError();
-        if (error === gl.OUT_OF_MEMORY) throw new Error('WebGL OUT_OF_MEMORY'); if (gl.isContextLost()) throw new Error('Mất WebGL context');
+      const gl = canvas.getContext('webgl2');
+      if (!gl) throw new Error('Không có WebGL 2');
+      const info = gl.getExtension('WEBGL_debug_renderer_info');
+      currentRun.renderer = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)).slice(0, 80);
+      const side = Math.floor(Math.sqrt(stepBytes / 4)); const pixels = new Uint8Array(side * side * 4);
+      const shader = (type, source) => { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); return s; };
+      const program = gl.createProgram();
+      gl.attachShader(program, shader(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){gl_Position=vec4(0.0,0.0,0.0,1.0);gl_PointSize=1.0;}'));
+      gl.attachShader(program, shader(gl.FRAGMENT_SHADER, '#version 300 es\nprecision mediump float;uniform sampler2D t;out vec4 c;void main(){c=texture(t,vec2(0.37,0.61));}'));
+      gl.linkProgram(program); gl.useProgram(program);
+      const probe = new Uint8Array(4);
+      return { bytesPerStep: side * side * 4, grow() {
+        if (kind === 'random') fillRandom(pixels); else pixels.fill(7); // Distinct contents per texture.
+        const texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, side, side);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, side, side, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.drawArrays(gl.POINTS, 0, 1); // Sample it so the GPU really materializes the texture.
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, probe);
+        const error = gl.getError();
+        if (error === gl.OUT_OF_MEMORY) throw Object.assign(new Error('WebGL OUT_OF_MEMORY'), {name: 'WebGLOutOfMemory'});
+        if (gl.isContextLost()) throw Object.assign(new Error('Mất WebGL context'), {name: 'WebGLContextLost'});
         held.push(texture); } };
     }
     throw new Error('Chế độ không hỗ trợ');
   }
 
+  const stopIfHidden = () => { if (running && currentRun) { currentRun.hidden = true; save(currentState); } };
+  let currentState = null;
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stopIfHidden(); });
+  window.addEventListener('pagehide', stopIfHidden);
   byId('start').addEventListener('click', async () => {
+    if (used) { location.reload(); return; } // Each run starts from a fresh page, so nothing from a previous run is still resident.
     if (running) return;
     running = true; byId('start').disabled = true;
     const mode = byId('mode').value, stepMB = Number(byId('step').value), capMB = Number(byId('cap').value);
-    const state = load();
-    const run = {mode, stepMB, capMB, okMB: 0, attemptMB: 0, outcome: 'running', started: new Date().toISOString(),
+    kind = byId('kind').value;
+    const state = load(); currentState = state;
+    const run = currentRun = {mode, kind, stepMB, capMB, okMB: 0, attemptMB: 0, outcome: 'running', started: new Date().toISOString(),
       standalone: standalone(), browser: navigator.userAgent};
     state.runs = [...state.runs.slice(-9), run];
     const persist = () => { if (!save(state)) throw new Error('Không ghi được localStorage'); };
@@ -152,23 +210,26 @@
         total = DATA_BYTES; run.okMB = Math.round(total / MB); persist();
       }
       const grow = allocator(mode, stepMB * MB);
+      const stepBytes = grow.bytesPerStep || stepMB * MB;
       window.__probeHeld = grow;
+      persist(); // Records the chosen WebAssembly maximum / GPU renderer.
       while (total / MB + stepMB <= capMB) {
-        run.attemptMB = Math.round(total / MB) + stepMB; persist(); // Recorded before asking: survives a kill.
+        if (run.hidden) { run.outcome = 'interrupted'; break; }
+        run.attemptMB = Math.round(total / MB) + stepMB; run.stepAt = Date.now(); persist(); // Recorded before asking: survives a kill.
         grow.grow();
-        total += stepMB * MB; run.okMB = Math.round(total / MB); persist();
-        byId('live').textContent = `${run.okMB} MB`;
+        total += stepBytes; run.totalBytes = total; run.okMB = Math.round(total / MB); persist();
+        byId('live').textContent = `${run.okMB} MiB`;
         byId('status').textContent = `Đang xin thêm bộ nhớ (${modeNames[mode]})…`;
         await wait(120);
       }
-      run.outcome = 'cap';
-      byId('status').textContent = `Đạt ${run.okMB} MB mà không bị tắt.`;
+      if (run.outcome !== 'interrupted') run.outcome = 'cap';
+      byId('status').textContent = run.outcome === 'interrupted' ? 'Đã dừng vì trang bị ẩn.' : `Đạt ${run.okMB} MiB mà không bị tắt.`;
     } catch (error) {
-      run.outcome = 'refused'; run.error = String(error?.message || error).slice(0, 300);
+      run.outcome = 'refused'; run.error = `${error?.name || 'Error'}: ${String(error?.message || error)}`.slice(0, 300);
       byId('status').textContent = `Trình duyệt từ chối ở ${run.attemptMB} MB: ${run.error}`;
     } finally {
       run.finished = new Date().toISOString(); save(state);
-      running = false; byId('start').disabled = false; render();
+      running = false; used = true; byId('start').disabled = false; byId('start').textContent = 'Tải lại trang để đo lần tiếp'; render();
       // Release what we hold so the page stays usable.
       window.__probeData = null; window.__probeHeld = null;
     }
@@ -176,8 +237,8 @@
 
   byId('copy').addEventListener('click', async () => {
     const state = load();
-    const text = [`Thiết bị: ${navigator.userAgent}`, `Chế độ mở: ${standalone() ? 'Ứng dụng' : 'Trình duyệt'}`, '',
-      ...state.runs.map(describe)].join('\n');
+    const text = ['Đo giới hạn bộ nhớ · bản 2', `Thiết bị: ${navigator.userAgent}`, `Chế độ mở: ${standalone() ? 'Ứng dụng' : 'Trình duyệt'}`, '',
+      ...state.runs.map(describe), '', '--- Bản 1 ---', renderV1() || 'Không có'].join('\n');
     try { await navigator.clipboard.writeText(text); byId('copy-status').textContent = 'Đã sao chép.'; }
     catch (_) { byId('copy-status').textContent = 'Không sao chép tự động được; hãy chọn và sao chép phần Lịch sử đo.'; }
   });
