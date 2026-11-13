@@ -28,7 +28,7 @@
       <button id="retry-button" type="button" hidden>Thử tải lại</button>
       <details id="load-error-details" hidden><summary>Chi tiết lỗi</summary><pre id="load-error-message"></pre></details>
       <p class="hint">Xoay ngang iPhone để có thêm không gian thao tác.</p>
-      <p class="hint">Bản 11.1 · Trang đo bộ nhớ chính xác hơn</p>
+      <p class="hint">Bản 12 · Giảm bộ nhớ khi vào màn chơi</p>
       <details id="startup-diagnostics" hidden><summary>Thông tin mở game</summary><pre id="startup-report"></pre><button id="copy-startup-report" type="button">Sao chép thông tin</button><p id="copy-startup-status" role="status"></p></details>
     </div>
   </section>
@@ -94,11 +94,11 @@
   </details>
   <script>
     window.unityBuild = {
-      loaderUrl: "Build/iphone-pwa-v8-shared-20261112.loader.js",
+      loaderUrl: "Build/iphone-pwa-v12-memory-20261113.loader.js",
       config: {
-        dataUrl: "Build/iphone-pwa-v8-shared-20261112.data.gz",
-        frameworkUrl: "Build/iphone-pwa-v8-shared-20261112.framework.js.gz",
-        codeUrl: "Build/iphone-pwa-v8-shared-20261112.wasm.gz",
+        dataUrl: "Build/iphone-pwa-v12-memory-20261113.data.gz",
+        frameworkUrl: "Build/iphone-pwa-v12-memory-20261113.framework.js.gz",
+        codeUrl: "Build/iphone-pwa-v12-memory-20261113.wasm.gz",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "Local Reconstruction",
         productName: "Probably Stolen Mobile",

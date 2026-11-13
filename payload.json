@@ -1,96 +1,91 @@
 {
-  "sourceVersion": "2bebd248ab737c7811bbf6db",
+  "sourceVersion": "ede37334a5eeaca566f83788",
   "files": [
     {
-      "path": "Build/iphone-pwa-v8-shared-20261112.data.gz",
-      "url": "Build/iphone-pwa-v8-shared-20261112.data.gz",
-      "transferBytes": 270144383,
-      "responseBytes": 298967749,
+      "path": "Build/iphone-pwa-v12-memory-20261113.data.gz",
+      "url": "Build/iphone-pwa-v12-memory-20261113.data.gz",
+      "transferBytes": 208060606,
+      "responseBytes": 234107021,
       "contentEncoding": "gzip",
-      "sha256": "e5aa2b60498d41a45c5bee195a6b6f6e1502ef7bbb59b28324c225245c4f4910",
-      "integrity": "sha256-dRB4LYhkRGhgVuhlvVLzzhYXqv3EdBCXO3TLksMBLCw=",
+      "sha256": "54af7f0a388034520127c1363608a1e262ba2f9151b9c9baa97ebd137a36a0b1",
+      "integrity": "sha256-E9RuEt9BPSof5zAgRVz26uaB+JA7+1mFtb3VA09oUb4=",
       "required": true,
       "parts": [
         {
           "path": "payload/000-000.part",
-          "sha256": "5db82130e5a50f2ed189f5d1e0c824ef9d718045ec21c6fcbadd63e752cb53ee",
+          "sha256": "8b1cfbcd31c3831625d3557c6efab55f8ac56bff836e71c3fa8f186b5c39ee79",
           "bytes": 50331648
         },
         {
           "path": "payload/000-001.part",
-          "sha256": "3cc034878728ec06fcef6c0e06b91ac06a3c719a4fc4d93aeaf2e6a060c9163a",
+          "sha256": "b999a8978cc53e522919e6b1b650380d7ffb14b89fbd77e71e02f9e1e5b4fb1d",
           "bytes": 50331648
         },
         {
           "path": "payload/000-002.part",
-          "sha256": "fbc1fa5a2915482556f490aeaf8d44c1b73c4f2aca6bdee988faff405989afdc",
+          "sha256": "874ab2615d07474c32ad9e9684c4388c973ca6ad59f04040e019f6eb4e954295",
           "bytes": 50331648
         },
         {
           "path": "payload/000-003.part",
-          "sha256": "045e67afa45933d44b43a2bd013f8ad63984f19fa139999f123c88b68d930d4c",
+          "sha256": "c7df19652681dbce601d995ffb08805374531f75580a737f5ef8cf1595abf46b",
           "bytes": 50331648
         },
         {
           "path": "payload/000-004.part",
-          "sha256": "231c19de62434b94f191638a178e5912c747e74e58eb6db0b5bb49c98f432227",
-          "bytes": 50331648
-        },
-        {
-          "path": "payload/000-005.part",
-          "sha256": "96a6d18ff2645d3ae8ec4c0e8e86acb368626d389a700e56583e51ead294bbff",
-          "bytes": 18486143
+          "sha256": "ccb721ab7b366c2a6f292020d74f60ef20ebf6ff10ab2e1f2a861b14cc5ac082",
+          "bytes": 6734014
         }
       ]
     },
     {
-      "path": "Build/iphone-pwa-v8-shared-20261112.framework.js.gz",
-      "url": "Build/iphone-pwa-v8-shared-20261112.framework.js.gz",
-      "transferBytes": 94593,
-      "responseBytes": 486228,
+      "path": "Build/iphone-pwa-v12-memory-20261113.framework.js.gz",
+      "url": "Build/iphone-pwa-v12-memory-20261113.framework.js.gz",
+      "transferBytes": 94635,
+      "responseBytes": 486393,
       "contentEncoding": "gzip",
-      "sha256": "d5995b1d4448658c38b58fedd08656360088b557de8eff31a4bca28ab58a12cc",
-      "integrity": "sha256-EwsAwTVX2f/lVYeM464i7Wg+8uVLMupx+xTDX9ayXO8=",
+      "sha256": "a1309b2f9a1eba9377b115e71323b47f4e160133790db020173f266924b0e518",
+      "integrity": "sha256-JLRm8l2UgG9Rc+c304mXHzjw0DX4Yw8y8ayKrfzKSaM=",
       "required": true,
       "parts": [
         {
           "path": "payload/001-000.part",
-          "sha256": "d5995b1d4448658c38b58fedd08656360088b557de8eff31a4bca28ab58a12cc",
-          "bytes": 94593
+          "sha256": "a1309b2f9a1eba9377b115e71323b47f4e160133790db020173f266924b0e518",
+          "bytes": 94635
         }
       ]
     },
     {
-      "path": "Build/iphone-pwa-v8-shared-20261112.loader.js",
-      "url": "Build/iphone-pwa-v8-shared-20261112.loader.js",
+      "path": "Build/iphone-pwa-v12-memory-20261113.loader.js",
+      "url": "Build/iphone-pwa-v12-memory-20261113.loader.js",
       "transferBytes": 19328,
       "responseBytes": 19328,
       "contentEncoding": null,
-      "sha256": "388172a6b87a4a7090a759d68d9ceeecd13eb5675174a59f9126457d858bb238",
-      "integrity": "sha256-OIFyprh6SnCQp1nWjZzu7NE+tWdRdKWfkSZFfYWLsjg=",
+      "sha256": "de89d830a90aebc9a2ea685990b160a669e0183c8cdb0d7591f663c2fb22f8bd",
+      "integrity": "sha256-3onYMKkK68mi6mhZkLFgpmngGDyM2w11kfZjwvsi+L0=",
       "required": true,
       "parts": [
         {
           "path": "payload/002-000.part",
-          "sha256": "388172a6b87a4a7090a759d68d9ceeecd13eb5675174a59f9126457d858bb238",
+          "sha256": "de89d830a90aebc9a2ea685990b160a669e0183c8cdb0d7591f663c2fb22f8bd",
           "bytes": 19328
         }
       ]
     },
     {
-      "path": "Build/iphone-pwa-v8-shared-20261112.wasm.gz",
-      "url": "Build/iphone-pwa-v8-shared-20261112.wasm.gz",
-      "transferBytes": 15373165,
-      "responseBytes": 55318744,
+      "path": "Build/iphone-pwa-v12-memory-20261113.wasm.gz",
+      "url": "Build/iphone-pwa-v12-memory-20261113.wasm.gz",
+      "transferBytes": 15370018,
+      "responseBytes": 55322501,
       "contentEncoding": "gzip",
-      "sha256": "4c62cc57252275fcb6368331ffa91427f09da00ee26482f2205ef5d480ea4655",
-      "integrity": "sha256-iNAeQePEl+N/hRf6wye41tkra0p//xPcsPh9xyGOIsw=",
+      "sha256": "97ca26e253fef5be9ac98f84de7641e12ed05e3588c3093360757e016531158f",
+      "integrity": "sha256-rYRQsz2mktThWOwXWcZMJFFWn3klbcTi0hI58xxfAfg=",
       "required": true,
       "parts": [
         {
           "path": "payload/003-000.part",
-          "sha256": "4c62cc57252275fcb6368331ffa91427f09da00ee26482f2205ef5d480ea4655",
-          "bytes": 15373165
+          "sha256": "97ca26e253fef5be9ac98f84de7641e12ed05e3588c3093360757e016531158f",
+          "bytes": 15370018
         }
       ]
     },
@@ -471,17 +466,17 @@
     {
       "path": "index.html",
       "url": "index.html",
-      "transferBytes": 8494,
-      "responseBytes": 8494,
+      "transferBytes": 8496,
+      "responseBytes": 8496,
       "contentEncoding": null,
-      "sha256": "041eead1306f1cc5b27e3f477b06fab27c3d33acb9f7ab4138ad9d24c7a7ace3",
-      "integrity": "sha256-BB7q0TBvHMWyfj9Hewb6snw9M6y596tBOK2dJMenrOM=",
+      "sha256": "c4ece0c3f4e687157f43bba726015b1a0e9d49577dc7b95d2d0af4e518779aed",
+      "integrity": "sha256-xOzgw/TmhxV/Q7unJgFbGg6dSVd9x7ldLQr05Rh3mu0=",
       "required": true,
       "parts": [
         {
           "path": "payload/026-000.part",
-          "sha256": "041eead1306f1cc5b27e3f477b06fab27c3d33acb9f7ab4138ad9d24c7a7ace3",
-          "bytes": 8494
+          "sha256": "c4ece0c3f4e687157f43bba726015b1a0e9d49577dc7b95d2d0af4e518779aed",
+          "bytes": 8496
         }
       ]
     },
@@ -624,17 +619,17 @@
     {
       "path": "startup.js",
       "url": "startup.js",
-      "transferBytes": 3256,
-      "responseBytes": 3256,
+      "transferBytes": 5750,
+      "responseBytes": 5750,
       "contentEncoding": null,
-      "sha256": "993a590aabf4d213fdafd3aa0e8b9f954bd38e2bc4de37ec9a05ade8b1e1e3af",
-      "integrity": "sha256-mTpZCqv00hP9r9OqDouflUvTjivE3jfsmgWt6LHh468=",
+      "sha256": "d11e4c90693f345ae7c1e984a8560df31592f302700b5b0564e515ba0c66c073",
+      "integrity": "sha256-0R5MkGk/NFrnwemEqFYN8xWS8wJwC1sFZOUVugxmwHM=",
       "required": true,
       "parts": [
         {
           "path": "payload/035-000.part",
-          "sha256": "993a590aabf4d213fdafd3aa0e8b9f954bd38e2bc4de37ec9a05ade8b1e1e3af",
-          "bytes": 3256
+          "sha256": "d11e4c90693f345ae7c1e984a8560df31592f302700b5b0564e515ba0c66c073",
+          "bytes": 5750
         }
       ]
     }
