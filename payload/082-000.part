@@ -63,3 +63,5 @@ h1 span { color: var(--accent); }
   .has-mobile-controls #app-menu summary { width: 100%; min-height: 44px; padding: .2rem; text-align: center; font-size: .7rem; }
   .has-mobile-controls #app-menu[open] .menu-content { position: absolute; right: 0; top: 48px; width: min(23rem, calc(100vw - 2rem)); max-height: calc(var(--viewport-height) - 72px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
 }
+.update-tools { margin: 0 0 1rem; padding: 0 0 1rem; border-bottom: 1px solid var(--edge); }
+#update-tip { color: var(--accent); font-weight: 650; }

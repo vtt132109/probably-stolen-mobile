@@ -13,6 +13,13 @@
   let retryingCheckpoint = false;
   let storageNeedsReload = false;
   let lastStartupError = '';
+  let loaderStarted = false; // Unity's loader is running or has run in this page.
+  let loadFailed = false;    // ...and failed, so no game state exists in this page.
+  let updating = false;
+  let updateRequested = false; // This page asked the new version to take over.
+  let reloadingForUpdate = false;
+  let servedBy = null; // Version of the worker that served this page's shell (null on a first visit).
+  const hadController = Boolean(navigator.serviceWorker?.controller);
   window.addEventListener('error', event => { if (launching && !window.unityInstance) lastStartupError = event.message || ''; });
   navigator.serviceWorker?.addEventListener('message', event => {
     if (event.data?.type === 'ASSET_ERROR' && launching && !window.unityInstance)
@@ -32,6 +39,12 @@
       navigator.serviceWorker.addEventListener('controllerchange',changed);changed();
     });
     const state=await sendToWorker('OFFLINE_STATUS');
+    // A newer worker took over after this page loaded (for example forced from another tab): this page's
+    // shell belongs to the old version, so reload into the new one instead of starting an old build.
+    if(servedBy && state.version!==servedBy) {
+      reloadForUpdate();
+      throw Object.assign(new Error('Đang mở bản mới…'), {userAction: true});
+    }
     // Best effort and bounded: a stalled network, captive portal or broken response must not block an
     // offline-ready game.
     let published=null;
@@ -42,9 +55,159 @@
         if(response.ok) published=(await response.json())?.version;
       } catch (_) { published=null; } finally { clearTimeout(timer); }
     }
-    if(typeof published==='string' && published!==state.version)
-      throw Object.assign(new Error('Có bản cập nhật đang chờ. Đóng tất cả tab game và cửa sổ ứng dụng, rồi mở lại. Không cần xóa save.'), {userAction: true});
+    if(typeof published==='string' && published!==state.version) {
+      // The game has not started in this page, so nothing is lost by switching to the new version now.
+      loadStatus.textContent = 'Có bản mới. Đang cập nhật…';
+      let reloading = false;
+      try { reloading = await applyUpdate({ automatic: true }); } catch (_) { reloading = false; }
+      if (reloading) throw Object.assign(new Error('Đang mở bản mới…'), {userAction: true});
+      throw Object.assign(new Error('Có bản cập nhật. Mở Cài đặt → “Cập nhật bản mới nhất”. Không cần xóa save.'), {userAction: true});
+    }
   }
+
+  // ---- Updates (release 14) ----
+  // A new version installs in the background but, by design, only takes over once every window of the
+  // game is closed, so a reload (F5) alone keeps the old version. These helpers let the page ask the
+  // waiting worker to take over now, then reload into the new version.
+  const updateButton = byId('update-button');
+  const updateStatus = byId('update-status');
+  const gameStarted = () => Boolean(window.unityInstance || (loaderStarted && !loadFailed));
+  const offlineButtonEl = byId('offline-button');
+
+  function reloadForUpdate() {
+    if (reloadingForUpdate) return;
+    reloadingForUpdate = true;
+    window.location.reload();
+  }
+
+  // The new version may take over later than asked: a browser waits until the old worker finishes its
+  // background work (for example storing music). Reload then if this page asked for it, or if nothing has
+  // started here yet; a running game is left alone and told that the new version is ready.
+  navigator.serviceWorker?.addEventListener('controllerchange', () => {
+    if (updateRequested || (hadController && !gameStarted() && !launching && !downloading)) reloadForUpdate();
+    else if (hadController && gameStarted()) updateStatus.textContent = 'Bản mới đã sẵn sàng. Lưu trong game rồi tải lại trang khi tiện.';
+  });
+  const shortVersion = version => typeof version === 'string' ? version.slice(0, 8) : '?';
+
+  function showUpdateTip() { byId('update-tip').hidden = !registration?.waiting; }
+
+  function untilState(worker, ms) {
+    return new Promise((resolve, reject) => {
+      const done = () => ['installed', 'activating', 'activated', 'redundant'].includes(worker.state);
+      const timer = setTimeout(() => finish(new Error('Tải bản mới quá lâu. Kiểm tra mạng rồi thử lại.')), ms);
+      const changed = () => { if (done()) finish(); };
+      function finish(error) { clearTimeout(timer); worker.removeEventListener('statechange', changed); error ? reject(error) : resolve(); }
+      worker.addEventListener('statechange', changed); changed();
+    });
+  }
+
+  // Returns the installed new version's worker, asking the server first; null when there is none.
+  async function findNewWorker() {
+    if (registration.waiting) return registration.waiting;
+    await registration.update();
+    const worker = registration.installing || registration.waiting;
+    if (worker) await untilState(worker, 3 * 60 * 1000);
+    return registration.waiting;
+  }
+
+  function askWorker(worker, data) {
+    return new Promise((resolve, reject) => {
+      const channel = new MessageChannel();
+      const timer = setTimeout(() => finish(new Error('Bản mới chưa hỗ trợ cập nhật nhanh. Đóng mọi cửa sổ game rồi mở lại.')), 10000);
+      function finish(error, result) { clearTimeout(timer); channel.port1.close(); error ? reject(error) : resolve(result); }
+      channel.port1.onmessage = ({ data: reply }) => { if (reply?.type === data.type) finish(null, reply); };
+      worker.postMessage(data, [channel.port2]);
+    });
+  }
+
+  function untilControllerChange(ms) {
+    return new Promise(resolve => {
+      const timer = setTimeout(() => done(false), ms);
+      const changed = () => done(true);
+      function done(result) { clearTimeout(timer); navigator.serviceWorker.removeEventListener('controllerchange', changed); resolve(result); }
+      navigator.serviceWorker.addEventListener('controllerchange', changed);
+    });
+  }
+
+  // Resolves once the game's latest checkpoint is on the device; rejects if that cannot be confirmed.
+  async function flushBeforeUpdate() {
+    let timer;
+    try {
+      await Promise.race([window.ProbablyStolenPWA.requestCheckpoint('update'),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 20000); })]);
+    } finally { clearTimeout(timer); }
+  }
+
+  // automatic: never interrupts a started game and never asks; returns true when the page is reloading.
+  async function applyUpdate({ automatic = false } = {}) {
+    if (updating || !registration) return false;
+    updating = true;
+    offlineButtonEl.disabled = true; // A reload or the new version's cleanup would cut an offline download.
+    let reloading = false;
+    try {
+      const worker = await findNewWorker();
+      showUpdateTip();
+      if (!worker) return false;
+      // The new version deletes the old version's offline files when it takes over; without a network
+      // the player could then not play at all, so never switch while offline.
+      if (!navigator.onLine) { updateStatus.textContent = 'Cần kết nối mạng để cập nhật. Bản hiện tại vẫn chơi được.'; return false; }
+      if (gameStarted()) {
+        if (automatic) return false;
+        if (!window.confirm('Game sẽ tải lại để cập nhật. Phần chơi chưa lưu sẽ mất. Cập nhật ngay?')) return false;
+        updateStatus.textContent = 'Đang ghi điểm lưu xuống thiết bị…';
+        try { await flushBeforeUpdate(); }
+        catch (_) {
+          updateStatus.textContent = 'Chưa ghi xong điểm lưu xuống thiết bị nên chưa cập nhật. Đợi vài giây rồi bấm lại.';
+          return false;
+        }
+      }
+      let reply = await askWorker(worker, { type: 'SKIP_WAITING' });
+      if (!reply.applied && reply.otherWindows && !automatic &&
+          window.confirm(`Game đang mở ở ${reply.otherWindows} cửa sổ/tab khác. Cập nhật có thể làm các cửa sổ đó lỗi. Vẫn cập nhật?`))
+        reply = await askWorker(worker, { type: 'SKIP_WAITING', force: true });
+      if (!reply.applied) {
+        if (reply.otherWindows) updateStatus.textContent = 'Có bản mới. Đóng các tab/cửa sổ game khác rồi bấm lại.';
+        else if (reply.error) updateStatus.textContent = 'Chưa cập nhật được: ' + reply.error;
+        return false;
+      }
+      updateRequested = true; // From here the controllerchange listener reloads, however late it comes.
+      reloading = true;
+      updateStatus.textContent = 'Đang mở bản mới…';
+      const switched = navigator.serviceWorker.controller === worker || await untilControllerChange(15000);
+      if (switched) { reloadForUpdate(); return true; }
+      // The old version is still finishing background work; the browser switches when it is done.
+      updateStatus.textContent = 'Bản mới sẽ tự mở khi bản cũ tải xong phần đang dở (có thể vài phút). Không cần làm gì thêm.';
+      setTimeout(reloadForUpdate, 5 * 60 * 1000); // Then setupPWA finishes the switch if it is still pending.
+      return true;
+    } finally {
+      if (!reloading) { updating = false; refreshOfflineStatus(); }
+    }
+  }
+
+  updateButton.addEventListener('click', async () => {
+    if (updating) { if (!updateRequested) updateStatus.textContent = 'Đang kiểm tra bản mới…'; return; }
+    if (downloading) { updateStatus.textContent = 'Đang tải nội dung offline. Đợi tải xong rồi cập nhật.'; return; }
+    if (launching && !window.unityInstance && !loadFailed) { updateStatus.textContent = 'Game đang mở. Đợi vào game xong rồi cập nhật.'; return; }
+    updateButton.disabled = true;
+    updateStatus.textContent = 'Đang kiểm tra bản mới…';
+    try {
+      if (!registration) throw new Error('Trình duyệt này chưa bật được bộ tải offline.');
+      if (await applyUpdate()) return;
+      if (registration.waiting) {
+        if (updateStatus.textContent === 'Đang kiểm tra bản mới…') updateStatus.textContent = 'Đã hủy. Bấm lại khi muốn cập nhật.';
+        return;
+      }
+      const state = await sendToWorker('OFFLINE_STATUS');
+      const response = await fetch('pwa-build.json', { cache: 'no-store' });
+      const published = response.ok ? (await response.json())?.version : null;
+      updateStatus.textContent = typeof published === 'string' && published !== state.version
+        ? 'Máy chủ có bản mới nhưng chưa tải về được. Kiểm tra mạng rồi thử lại.'
+        : `Bạn đang dùng bản mới nhất (mã ${shortVersion(state.version)}).`;
+    } catch (error) {
+      updateStatus.textContent = navigator.onLine ? 'Chưa kiểm tra được bản mới: ' + error.message
+        : 'Cần kết nối mạng để kiểm tra bản mới.';
+    } finally { updateButton.disabled = false; }
+  });
 
   // The game must register real save/visibility hooks. This shell never claims a save occurred.
   window.ProbablyStolenPWA = Object.freeze({
@@ -112,6 +275,7 @@
   });
 
   byId('play-button').addEventListener('click', async () => {
+    if (updating) { loadStatus.textContent = 'Đang cập nhật bản mới…'; return; }
     if (launching || downloading) return;
     launching = true;
     let fetchDataWithProgress, wasmLoader;
@@ -154,6 +318,7 @@
     const fail = error => {
       if (failed) return;
       failed = true;
+      loadFailed = true;
       downloads.abort();
       console.error('Game loading failed', error);
       loadStatus.textContent = 'Chưa mở được game. Xem chi tiết bên dưới rồi thử lại.';
@@ -207,6 +372,7 @@
         await refreshOfflineStatus();
       } catch (error) { fail(error); }
     };
+    loaderStarted = true;
     document.body.append(script);
   });
   byId('retry-button').addEventListener('click', () => window.location.reload());
@@ -239,7 +405,7 @@
       : 'Nội dung offline chưa tải đủ. Cần kết nối mạng để tải phần còn lại.';
     const size = state.bytes >= 1e9 ? `${(state.bytes / 1e9).toFixed(2)} GB` : `${Math.ceil(state.bytes / 1e6)} MB`;
     offlineButton.textContent = state.ready ? 'Đã sẵn sàng offline' : `Tải để chơi offline · ${size}`;
-    offlineButton.disabled = state.ready;
+    offlineButton.disabled = state.ready || updating;
   }
 
   async function refreshOfflineStatus() {
@@ -249,7 +415,7 @@
   }
 
   offlineButton.addEventListener('click', async () => {
-    if (downloading || (launching && !window.unityInstance)) return;
+    if (downloading || updating || (launching && !window.unityInstance)) return;
     downloading = true;
     byId('play-button').disabled = true;
     byId('offline-progress').hidden = false;
@@ -284,9 +450,17 @@
     try {
       registration = await navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' });
       await navigator.serviceWorker.ready;
-      const showUpdate = () => { if (registration.waiting) byId('update-tip').hidden = false; };
-      registration.addEventListener('updatefound', () => registration.installing?.addEventListener('statechange', showUpdate));
-      showUpdate();
+      registration.addEventListener('updatefound', () => registration.installing?.addEventListener('statechange', showUpdateTip));
+      showUpdateTip();
+      if (hadController) try { servedBy = (await sendToWorker('OFFLINE_STATUS')).version; } catch (_) { servedBy = null; }
+      // A version installed during an earlier visit is waiting: switch to it before the player starts,
+      // at most once a minute (counted from the last attempt) so a failed takeover can never loop reloads.
+      if (registration.waiting && navigator.onLine && !gameStarted() && !launching) {
+        let recent = false;
+        try { recent = Date.now() - Number(sessionStorage.getItem('ps-auto-update') || 0) < 60000;
+          if (!recent) sessionStorage.setItem('ps-auto-update', String(Date.now())); } catch (_) { /* Storage blocked: still try. */ }
+        if (!recent && await applyUpdate({ automatic: true }).catch(() => false)) return;
+      }
       await refreshOfflineStatus();
     } catch (error) {
       console.warn('Offline setup unavailable', error);

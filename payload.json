@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "56a3fdcb5ca2a43b3196dc49",
+  "sourceVersion": "64981eea4e425a759b7f1e96",
   "files": [
     {
       "path": "Build/audio/06977a1a5931802841aa24e2825d128e.m4a",
@@ -801,75 +801,75 @@
       ]
     },
     {
-      "path": "Build/iphone-pwa-v12-memory-20261113.data.gz",
-      "url": "Build/iphone-pwa-v12-memory-20261113.data.gz",
-      "transferBytes": 94094378,
-      "responseBytes": 234107021,
+      "path": "Build/iphone-pwa-v14-unity2-20261117.data.gz",
+      "url": "Build/iphone-pwa-v14-unity2-20261117.data.gz",
+      "transferBytes": 94094461,
+      "responseBytes": 234109365,
       "contentEncoding": "gzip",
-      "sha256": "86dadc5d39337b71d2906b96e05be21008573669f59c9910c76b946010874c76",
-      "integrity": "sha256-Kter7zNp8GpXm3bHm5PLAgU28mHMd8s7jVE9USDIiQM=",
+      "sha256": "ae296e9e1a99993ba033bf44938f7018110b4b04b6cdaa8e7c206324f3ecc112",
+      "integrity": "sha256-xzpREpJba3e3Ey0lShqMnXkg8AsgAWmbDHlxKyp/fbg=",
       "required": true,
       "parts": [
         {
           "path": "payload/047-000.part",
-          "sha256": "e11c2acb7651fb8d59f66be409a574b66a3a76665663b80c94fbfcb882b6b537",
+          "sha256": "f956f6dc4faeaa891d4a1442f11224cf2eaef1438978fa931ac6094bd851c5d1",
           "bytes": 50331648
         },
         {
           "path": "payload/047-001.part",
-          "sha256": "67903a802b58daca3e9370430dc8a4fbc3d83e2d5578bf90732b325c41cb61bf",
-          "bytes": 43762730
+          "sha256": "9d97c72f6933b344bc92b899eefc210857fccca142898ab9855f5d3e54ca64f3",
+          "bytes": 43762813
         }
       ]
     },
     {
-      "path": "Build/iphone-pwa-v12-memory-20261113.framework.js.gz",
-      "url": "Build/iphone-pwa-v12-memory-20261113.framework.js.gz",
-      "transferBytes": 98037,
-      "responseBytes": 486770,
+      "path": "Build/iphone-pwa-v14-unity2-20261117.framework.js.gz",
+      "url": "Build/iphone-pwa-v14-unity2-20261117.framework.js.gz",
+      "transferBytes": 98074,
+      "responseBytes": 486889,
       "contentEncoding": "gzip",
-      "sha256": "3852d573a54aee3df3a682b00be8b6d2ec8edfeb6bbb58722493a3b70951750b",
-      "integrity": "sha256-AYKUghN7IVbRUIuXIVF3h6Oev/+6mBsBvk+dFbaLA1I=",
+      "sha256": "de330454e8c2e8fbf1d2b5c4d16736a286fb70ac7d4fa5b654daf82c402d0de2",
+      "integrity": "sha256-150EzvrlK29yKhB3Mnke8p8kWTDBuGEOUPqjdsUZv/E=",
       "required": true,
       "parts": [
         {
           "path": "payload/048-000.part",
-          "sha256": "3852d573a54aee3df3a682b00be8b6d2ec8edfeb6bbb58722493a3b70951750b",
-          "bytes": 98037
+          "sha256": "de330454e8c2e8fbf1d2b5c4d16736a286fb70ac7d4fa5b654daf82c402d0de2",
+          "bytes": 98074
         }
       ]
     },
     {
-      "path": "Build/iphone-pwa-v12-memory-20261113.loader.js",
-      "url": "Build/iphone-pwa-v12-memory-20261113.loader.js",
+      "path": "Build/iphone-pwa-v14-unity2-20261117.loader.js",
+      "url": "Build/iphone-pwa-v14-unity2-20261117.loader.js",
       "transferBytes": 19328,
       "responseBytes": 19328,
       "contentEncoding": null,
-      "sha256": "de89d830a90aebc9a2ea685990b160a669e0183c8cdb0d7591f663c2fb22f8bd",
-      "integrity": "sha256-3onYMKkK68mi6mhZkLFgpmngGDyM2w11kfZjwvsi+L0=",
+      "sha256": "90d6a8ae2077e37dac25740287963f0b97378b128914215479ba64a5b965ed0b",
+      "integrity": "sha256-kNaoriB3432sJXQCh5Y/C5c3ixKJFCFUebpkpbll7Qs=",
       "required": true,
       "parts": [
         {
           "path": "payload/049-000.part",
-          "sha256": "de89d830a90aebc9a2ea685990b160a669e0183c8cdb0d7591f663c2fb22f8bd",
+          "sha256": "90d6a8ae2077e37dac25740287963f0b97378b128914215479ba64a5b965ed0b",
           "bytes": 19328
         }
       ]
     },
     {
-      "path": "Build/iphone-pwa-v12-memory-20261113.wasm.gz",
-      "url": "Build/iphone-pwa-v12-memory-20261113.wasm.gz",
-      "transferBytes": 15370018,
-      "responseBytes": 55322501,
+      "path": "Build/iphone-pwa-v14-unity2-20261117.wasm.gz",
+      "url": "Build/iphone-pwa-v14-unity2-20261117.wasm.gz",
+      "transferBytes": 15374295,
+      "responseBytes": 55331177,
       "contentEncoding": "gzip",
-      "sha256": "97ca26e253fef5be9ac98f84de7641e12ed05e3588c3093360757e016531158f",
-      "integrity": "sha256-rYRQsz2mktThWOwXWcZMJFFWn3klbcTi0hI58xxfAfg=",
+      "sha256": "c45306ffd9c31a0f0bc41a62c07abd16f2e875c572575c1ae695823ee8545141",
+      "integrity": "sha256-9RSWD1bgLcS/SnPezuOxRC+NpwZRIfmrMnx7D6YhkwQ=",
       "required": true,
       "parts": [
         {
           "path": "payload/050-000.part",
-          "sha256": "97ca26e253fef5be9ac98f84de7641e12ed05e3588c3093360757e016531158f",
-          "bytes": 15370018
+          "sha256": "c45306ffd9c31a0f0bc41a62c07abd16f2e875c572575c1ae695823ee8545141",
+          "bytes": 15374295
         }
       ]
     },
@@ -1165,17 +1165,17 @@
     {
       "path": "audio-external.js",
       "url": "audio-external.js",
-      "transferBytes": 5645,
-      "responseBytes": 5645,
+      "transferBytes": 7386,
+      "responseBytes": 7386,
       "contentEncoding": null,
-      "sha256": "44b48bac5e58cc3cfcf249ca17752f39365ad736859dae31e17864765901cf95",
-      "integrity": "sha256-RLSLrF5YzDz88knKF3UvOTZa1zaFna4x4XhkdlkBz5U=",
+      "sha256": "ff3597bb1b2ef56db0b6b62a286109443f6730d808db1ab8814a913c664964c0",
+      "integrity": "sha256-/zWXuxsu9W2wtrYqKGEJRD9nMNgI2xq4gUqRPGZJZMA=",
       "required": true,
       "parts": [
         {
           "path": "payload/068-000.part",
-          "sha256": "44b48bac5e58cc3cfcf249ca17752f39365ad736859dae31e17864765901cf95",
-          "bytes": 5645
+          "sha256": "ff3597bb1b2ef56db0b6b62a286109443f6730d808db1ab8814a913c664964c0",
+          "bytes": 7386
         }
       ]
     },
@@ -1267,17 +1267,17 @@
     {
       "path": "index.html",
       "url": "index.html",
-      "transferBytes": 8889,
-      "responseBytes": 8889,
+      "transferBytes": 9172,
+      "responseBytes": 9172,
       "contentEncoding": null,
-      "sha256": "7ce2292be3894ff8048884cf5b12572d9a4690317b0b4faad219b8b4d4607084",
-      "integrity": "sha256-fOIpK+OJT/gEiITPWxJXLZpGkDF7C0+q0hm4tNRgcIQ=",
+      "sha256": "2ef29b693f267a2d6e044bf49a1ea5658c456052ab1839101e81b7e4d7ef94f3",
+      "integrity": "sha256-LvKbaT8mei1uBEv0mh6lZYxFYFKrGDkQHoG35NfvlPM=",
       "required": true,
       "parts": [
         {
           "path": "payload/074-000.part",
-          "sha256": "7ce2292be3894ff8048884cf5b12572d9a4690317b0b4faad219b8b4d4607084",
-          "bytes": 8889
+          "sha256": "2ef29b693f267a2d6e044bf49a1ea5658c456052ab1839101e81b7e4d7ef94f3",
+          "bytes": 9172
         }
       ]
     },
@@ -1301,17 +1301,17 @@
     {
       "path": "memory-headroom.js",
       "url": "memory-headroom.js",
-      "transferBytes": 4372,
-      "responseBytes": 4372,
+      "transferBytes": 4289,
+      "responseBytes": 4289,
       "contentEncoding": null,
-      "sha256": "0b819f0114f4a777aba4c87dff16a0b3a9c652515729d02ded0894c4c04e6c51",
-      "integrity": "sha256-C4GfART0p3erpMh9/xags6nGUlFXKdAt7QiUxMBObFE=",
+      "sha256": "aecc770f0ac631ba726349238744e455a2a577b14b7e8c595f3299c79fe92197",
+      "integrity": "sha256-rsx3DwrGMbpyY0kjh0TkVaKld7FLfoxZXzKZx5/pIZc=",
       "required": true,
       "parts": [
         {
           "path": "payload/076-000.part",
-          "sha256": "0b819f0114f4a777aba4c87dff16a0b3a9c652515729d02ded0894c4c04e6c51",
-          "bytes": 4372
+          "sha256": "aecc770f0ac631ba726349238744e455a2a577b14b7e8c595f3299c79fe92197",
+          "bytes": 4289
         }
       ]
     },
@@ -1403,51 +1403,51 @@
     {
       "path": "shell.css",
       "url": "shell.css",
-      "transferBytes": 8336,
-      "responseBytes": 8336,
+      "transferBytes": 8485,
+      "responseBytes": 8485,
       "contentEncoding": null,
-      "sha256": "f0db938f6ab9ccb89a9c35bb143cccbe5ad79eb4af0bafaa9d4eb207fa70a643",
-      "integrity": "sha256-8NuTj2q5zLianDW7FDzMvlrXnrSvC6+qnU6yB/pwpkM=",
+      "sha256": "7d2a6cc2eef3634e9decdc400da363eeddf8a4e2ad8979423723a7d188b2fe7d",
+      "integrity": "sha256-fSpswu7zY06d7NxADaNj7t34pOKtiXlCNyOn0Yiy/n0=",
       "required": true,
       "parts": [
         {
           "path": "payload/082-000.part",
-          "sha256": "f0db938f6ab9ccb89a9c35bb143cccbe5ad79eb4af0bafaa9d4eb207fa70a643",
-          "bytes": 8336
+          "sha256": "7d2a6cc2eef3634e9decdc400da363eeddf8a4e2ad8979423723a7d188b2fe7d",
+          "bytes": 8485
         }
       ]
     },
     {
       "path": "shell.js",
       "url": "shell.js",
-      "transferBytes": 16532,
-      "responseBytes": 16532,
+      "transferBytes": 27261,
+      "responseBytes": 27261,
       "contentEncoding": null,
-      "sha256": "ca24acd889ebf5845bbceb93a56e6cbe91331a189c46a6d830d18f80ca81cb68",
-      "integrity": "sha256-yiSs2Inr9YRbvOuTpW5svpEzGhicRqbYMNGPgMqBy2g=",
+      "sha256": "521d5a623931fed28d2bebe7a78078685579c99d73e940beddb5834e87a8f3e5",
+      "integrity": "sha256-Uh1aYjkx/tKNK+vnp4B4aFV5yZ1z6UC+3bWDToeo8+U=",
       "required": true,
       "parts": [
         {
           "path": "payload/083-000.part",
-          "sha256": "ca24acd889ebf5845bbceb93a56e6cbe91331a189c46a6d830d18f80ca81cb68",
-          "bytes": 16532
+          "sha256": "521d5a623931fed28d2bebe7a78078685579c99d73e940beddb5834e87a8f3e5",
+          "bytes": 27261
         }
       ]
     },
     {
       "path": "startup.js",
       "url": "startup.js",
-      "transferBytes": 5750,
-      "responseBytes": 5750,
+      "transferBytes": 5630,
+      "responseBytes": 5630,
       "contentEncoding": null,
-      "sha256": "608e3f65ca674a1837bc28af30726b8b78c3375096ce980a98ee756a2673c318",
-      "integrity": "sha256-YI4/ZcpnShg3vCivMHJri3jDN1CWzpgKmO51aiZzwxg=",
+      "sha256": "529bd3c41b9ca960b3f5caf1dc2e1e8265bae8ef9aab14aad1830e2548b4ddac",
+      "integrity": "sha256-UpvTxBucqWCz9crx3C4egmW66O+aqxSq0YMOJUi03aw=",
       "required": true,
       "parts": [
         {
           "path": "payload/084-000.part",
-          "sha256": "608e3f65ca674a1837bc28af30726b8b78c3375096ce980a98ee756a2673c318",
-          "bytes": 5750
+          "sha256": "529bd3c41b9ca960b3f5caf1dc2e1e8265bae8ef9aab14aad1830e2548b4ddac",
+          "bytes": 5630
         }
       ]
     }

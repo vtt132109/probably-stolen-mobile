@@ -192,7 +192,8 @@ function virtualResponse(file) {
 
 self.addEventListener('install', event => {
   // Precache only the small shell. The large game download is explicit.
-  // No skipWaiting: the previous worker remains active while its clients are open.
+  // No automatic skipWaiting: the previous worker remains active while its clients are open, unless a
+  // page asks for the update (SKIP_WAITING below).
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     try {
@@ -244,7 +245,25 @@ self.addEventListener('fetch', event => {
 self.addEventListener('message', event => {
   if (!event.ports?.[0]) return;
   const port = event.ports[0];
-  if (event.data?.type === 'UNITY_DATA_MANIFEST') {
+  if (event.data?.type === 'SKIP_WAITING') {
+    // Release 14: the page's "Cập nhật bản mới nhất" (and its automatic update before Play) asks this
+    // waiting worker to take over now instead of after every window closes. Another open window may be
+    // mid-game on the old version, so it blocks the takeover unless the player confirmed (force).
+    // matchAll sees every window of the origin (on GitHub Pages: every project of the account), so only
+    // the game's own page counts, not other sites or the memory probe pages.
+    const gamePages = new Set([SCOPE, new URL('index.html', SCOPE).href]);
+    const isGamePage = client => { const url = new URL(client.url); url.search = ''; url.hash = ''; return gamePages.has(url.href); };
+    event.waitUntil((async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const otherWindows = windows.filter(client => client.id !== event.source?.id && isGamePage(client)).length;
+      if (otherWindows && !event.data.force) { port.postMessage({ type: 'SKIP_WAITING', applied: false, otherWindows }); return; }
+      // Reply first: browsers may hold the switch (and Chrome the skipWaiting promise) until the old worker
+      // finishes background work such as storing music. The page waits for controllerchange instead.
+      const skipping = self.skipWaiting();
+      port.postMessage({ type: 'SKIP_WAITING', applied: true, version: BUILD.version });
+      await skipping;
+    })().catch(error => port.postMessage({ type: 'SKIP_WAITING', applied: false, error: error.message })));
+  } else if (event.data?.type === 'UNITY_DATA_MANIFEST') {
     port.postMessage({type:'UNITY_DATA_MANIFEST', version:BUILD.version,
       files:BUILD.files, virtualFiles:BUILD.virtualFiles || []});
   } else if (event.data?.type === 'OFFLINE_STATUS') {

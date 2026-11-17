@@ -117,5 +117,43 @@
   }
   window.addEventListener('probably-stolen-ready', () => { gameRunning = true; scheduleWarm(WARM_DELAY_MS); });
 
-  window.ProbablyStolenAudio = Object.freeze({ match, create, urlFor });
+  // Release 14 (iPhone memory): Unity decodes every short effect into a float32 AudioBuffer at
+  // the output rate (48 kHz on iPhone, about 62 MiB once a level is open). The sources are
+  // 44.1 kHz AAC, so effects are decoded on an OfflineAudioContext at 24 kHz instead, which
+  // halves that memory; the live context resamples them when they play. Music and ambience
+  // (media elements) keep the full rate. If the lower-rate decode is unavailable or fails, the
+  // clip is decoded by Unity's own context as before.
+  const DECODE_RATE = 24000;
+  let decodeContext;
+  function decoder(main) {
+    if (decodeContext === undefined) {
+      decodeContext = null;
+      try {
+        const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (Offline && main && main.sampleRate > DECODE_RATE) decodeContext = new Offline(1, 1, DECODE_RATE);
+      } catch (_) { /* Keep the original decode. */ }
+    }
+    return decodeContext;
+  }
+  const quiet = promise => { if (promise && typeof promise.catch === 'function') promise.catch(() => {}); };
+  function decode(main, data, onDecoded, onError) {
+    const context = decoder(main);
+    if (!context) return quiet(main.decodeAudioData(data, onDecoded, onError));
+    const spare = data.slice(0); // decodeAudioData detaches its input; keep a copy for the fallback.
+    let settled = false;
+    const fallback = () => {
+      if (settled) return;
+      settled = true;
+      quiet(main.decodeAudioData(spare, onDecoded, onError));
+    };
+    try {
+      quiet(context.decodeAudioData(data, buffer => {
+        if (settled) return;
+        settled = true;
+        onDecoded(buffer);
+      }, fallback));
+    } catch (_) { fallback(); }
+  }
+
+  window.ProbablyStolenAudio = Object.freeze({ match, create, urlFor, decode, DECODE_RATE });
 })();
