@@ -12,6 +12,7 @@ const virtual = new Map((BUILD.virtualFiles || []).map(file => [new URL(file.url
 const required = BUILD.files.filter(file => file.required);
 const pending = new Map(); // url -> in-flight verified network response (shared by page retries)
 let download = null;
+let warming = null;
 let legacyList = null;
 
 const isShell = file => !/^(Build|StreamingAssets)\//.test(file.path);
@@ -167,9 +168,19 @@ function virtualResponse(file) {
     async pull(controller) {
       try {
         if (index === file.parts.length) { controller.close(); return; }
+        const holes = file.holes ? file.holes[index] : [];
         const url = new URL(file.parts[index++], SCOPE).href;
         const response = await assetResponse(url, assets.get(url));
-        controller.enqueue(new Uint8Array(await response.arrayBuffer()));
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        // Sparse parts (release 13) omit long zero runs; put them back in order.
+        let stored = 0, cursor = 0;
+        for (const [offset, length] of holes) {
+          controller.enqueue(bytes.subarray(stored, stored + offset - cursor));
+          controller.enqueue(new Uint8Array(length));
+          stored += offset - cursor;
+          cursor = offset + length;
+        }
+        controller.enqueue(bytes.subarray(stored));
       } catch (error) {
         if(self.clients.matchAll) for(const client of await self.clients.matchAll())
           client.postMessage({type:'ASSET_ERROR',path:file.path,message:error.message});
@@ -242,6 +253,25 @@ self.addEventListener('message', event => {
       // Legacy copies are released only once this version holds every required file itself.
       if (result.ready) await deleteLegacyCaches();
     }).catch(error => port.postMessage({ type: 'OFFLINE_ERROR', message: error.message })));
+  } else if (event.data?.type === 'WARM_AUDIO') {
+    // Release 13: external music used to be inside .data, which every online play cached.
+    // Store the missing audio files one at a time in the background (no body goes to the page);
+    // stop quietly at the first failure and try again on a later launch.
+    if (download || warming) { port.postMessage({ type: 'WARM_AUDIO', busy: true }); return; }
+    warming = (async () => {
+      let added = 0, failed = 0;
+      for (const file of required.filter(file => file.path.startsWith('Build/audio/'))) {
+        const url = urlOf(file);
+        try {
+          if (await cachedCopy(url, file)) continue;
+          await networkCopy(url, file, event).kept; // Same verification, deadline and dedupe as play-time transfers.
+          added++;
+        } catch (_) { failed++; } // Keep going; the page asks again later.
+      }
+      port.postMessage({ type: 'WARM_AUDIO', stored: added, failed });
+    })().catch(error => port.postMessage({ type: 'WARM_AUDIO', error: error.message }))
+      .finally(() => { warming = null; });
+    event.waitUntil(warming);
   } else if (event.data?.type === 'OFFLINE_DOWNLOAD') {
     if (download) { port.postMessage({ type: 'OFFLINE_ERROR', message: 'Một lượt tải khác đang chạy.' }); return; }
     download = (async () => {

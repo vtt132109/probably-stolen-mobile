@@ -10,6 +10,29 @@ import { patchUnityLoader } from './patch-unity-loader.mjs';
 const generated = new Set(['sw.js', 'pwa-build.json']);
 const workerPath = fileURLToPath(new URL('./pwa/service-worker.js', import.meta.url));
 const digest = data => createHash('sha256').update(data).digest('hex');
+// Release 13: externalized audio leaves long zero ranges in .data. Chunked (static-host) parts
+// omit zero runs of at least this size; the manifest records them and readers zero-fill them.
+export const ZERO_RUN_BYTES = 64 * 1024;
+
+export function zeroRuns(bytes, minimum = ZERO_RUN_BYTES) {
+  const runs = [];
+  for (let i = 0; i < bytes.length;) {
+    if (bytes[i] !== 0) { i++; continue; }
+    let end = i + 1;
+    while (end < bytes.length && bytes[end] === 0) end++;
+    if (end - i >= minimum) runs.push([i, end - i]);
+    i = end;
+  }
+  return runs;
+}
+
+function withoutRuns(bytes, runs) {
+  const kept = [];
+  let at = 0;
+  for (const [offset, length] of runs) { kept.push(bytes.subarray(at, offset)); at = offset + length; }
+  kept.push(bytes.subarray(at));
+  return Buffer.concat(kept);
+}
 
 export function validateRelativePath(path) {
   if (typeof path !== 'string' || !path || path.includes('\\') || path.includes(':') ||
@@ -77,18 +100,24 @@ export async function packageWebBuild(directory, { optionalPaths = [], chunkByte
       for await (const chunk of createReadStream(full).pipe(decoder)) responseBytes += chunk.length;
     }
     if (chunkBytes && !encoding && /^Build\/.+\.(data|wasm)$/.test(path) && responseBytes > chunkBytes) {
-      const parts = [];
-      for await (const bytes of createReadStream(full, { highWaterMark: chunkBytes })) {
+      const parts = [], spans = [], holes = [];
+      for await (const span of createReadStream(full, { highWaterMark: chunkBytes })) {
         const part = path + '.part' + String(parts.length).padStart(3, '0');
+        const runs = path.endsWith('.data') ? zeroRuns(span) : [];
+        const bytes = runs.length ? withoutRuns(span, runs) : span;
         await writeFile(join(root, part), bytes);
         const hash = createHash('sha256').update(bytes).digest();
         const url = part.split('/').map(encodeURIComponent).join('/');
         files.push({path:part,url,transferBytes:bytes.length,responseBytes:bytes.length,
           contentEncoding:null,sha256:hash.toString('hex'),integrity:'sha256-'+hash.toString('base64'),required:true});
         parts.push(url);
+        spans.push(span.length);
+        holes.push(runs);
       }
+      const sparse = holes.some(runs => runs.length);
       virtualFiles.push({path,url:path.split('/').map(encodeURIComponent).join('/'),parts,responseBytes,
-        contentType:path.endsWith('.wasm')?'application/wasm':'application/octet-stream'});
+        contentType:path.endsWith('.wasm')?'application/wasm':'application/octet-stream',
+        ...(sparse ? {spans, holes} : {})});
       continue;
     }
     files.push({ path, url: path.split('/').map(encodeURIComponent).join('/'),

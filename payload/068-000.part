@@ -1,0 +1,121 @@
+// Release 13 (iPhone memory): long music/ambience clips live in Build/audio/*.m4a instead of
+// the Unity .data file (scripts/externalize-web-audio.mjs leaves a marker in their place).
+// The patched framework asks match() whether the bytes Unity is loading are such a marker;
+// create() then returns a Unity compressed sound clip whose media URL is filled in once the
+// file has been fetched. Until then Unity sees the clip as still loading
+// (_JS_Sound_GetLoadState checks clip.url) and waits before playing it, exactly as it does
+// for clips that Web Audio is still decoding. A failed download is retried with backoff (and
+// at once when the network or the page comes back) instead of failing the clip for the
+// session, because Unity never loads a failed clip again. All downloads share one queue that
+// runs a single fetch at a time, newest clip first, so the track the player just chose is
+// not stuck behind clips Unity has already moved on from.
+(() => {
+  'use strict';
+  const MARKER = 'PSXAUDIO1';
+  const HEX_LENGTH = 64;
+  const RETRY_MS = [1000, 2000, 4000, 8000, 15000, 30000];
+  const WARM_DELAY_MS = 60000;
+  const WARM_RETRY_MS = 5 * 60000;
+  const codes = Array.from(MARKER, character => character.charCodeAt(0));
+  const isHex = code => (code >= 48 && code <= 57) || (code >= 97 && code <= 102);
+  const urlFor = sha256 => `Build/audio/${sha256.slice(0, 32)}.m4a`;
+
+  function match(heap, pointer, length) {
+    if (length < codes.length + HEX_LENGTH || pointer + codes.length + HEX_LENGTH > heap.length) return null;
+    for (let i = 0; i < codes.length; i++) if (heap[pointer + i] !== codes[i]) return null;
+    let sha256 = '';
+    for (let i = 0; i < HEX_LENGTH; i++) {
+      const code = heap[pointer + codes.length + i];
+      if (!isHex(code)) return null;
+      sha256 += String.fromCharCode(code);
+    }
+    return sha256;
+  }
+
+  async function fetchOnce(url) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    if (!blob.size) throw new Error('empty audio file');
+    return blob.type === 'audio/mp4' ? blob : blob.slice(0, blob.size, 'audio/mp4');
+  }
+
+  const queue = []; // {url, clip, attempt, due, done}
+  let running = false, timer = null, sequence = 0;
+  function pump() {
+    if (running) return;
+    clearTimeout(timer);
+    timer = null;
+    for (let i = queue.length - 1; i >= 0; i--) if (queue[i].done) queue.splice(i, 1);
+    if (!queue.length) return;
+    const now = Date.now();
+    let next = null, wait = Infinity;
+    for (const entry of queue) {
+      if (entry.due <= now) { if (!next || entry.order > next.order) next = entry; }
+      else wait = Math.min(wait, entry.due - now);
+    }
+    if (!next) { timer = setTimeout(pump, wait); return; }
+    running = true;
+    fetchOnce(next.url).then(blob => {
+      next.done = true;
+      if (next.released) return;
+      next.clip.url = URL.createObjectURL(blob);
+      if (next.clip.mediaElement) next.clip.mediaElement.src = next.clip.url;
+    }, error => {
+      if (next.attempt === 2) console.warn(`Chưa tải được nhạc ${next.url}, sẽ thử lại: ${error && error.message || error}`);
+      next.due = Date.now() + RETRY_MS[Math.min(next.attempt++, RETRY_MS.length - 1)];
+    }).finally(() => { running = false; pump(); });
+  }
+  function wake() {
+    for (const entry of queue) entry.due = 0;
+    pump();
+    scheduleWarm(0);
+  }
+  window.addEventListener('online', wake);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+
+  function create(sha256, createCompressedClip, soundType) {
+    const clip = createCompressedClip(new ArrayBuffer(0), soundType);
+    URL.revokeObjectURL(clip.url);
+    clip.url = null;
+    clip.mediaElement.removeAttribute('src');
+    const entry = {url: urlFor(sha256), clip, attempt: 0, due: 0, done: false, released: false, order: ++sequence};
+    const release = clip.release;
+    clip.release = function () {
+      entry.released = entry.done = true;
+      const url = this.url;
+      release.call(this);
+      if (url) URL.revokeObjectURL(url);
+    };
+    queue.push(entry);
+    pump();
+    return clip;
+  }
+
+  // External music is no longer part of .data, which every online play used to cache. Once the
+  // game is running, ask the service worker to store the missing files in the background, and
+  // ask again later (or when the network/page comes back) until it reports nothing left.
+  let gameRunning = false, warmTimer = null, warmed = false, warming = false;
+  function scheduleWarm(delay) {
+    if (!gameRunning || warmed || warming) return;
+    clearTimeout(warmTimer);
+    warmTimer = setTimeout(warmCache, delay);
+  }
+  function warmCache() {
+    const worker = navigator.serviceWorker?.controller;
+    if (!worker || !navigator.onLine || typeof MessageChannel !== 'function') { scheduleWarm(WARM_RETRY_MS); return; }
+    warming = true;
+    const channel = new MessageChannel();
+    channel.port1.onmessage = event => {
+      warming = false;
+      const result = event.data || {};
+      if (!result.busy && !result.error && !result.failed) { warmed = true; return; }
+      if (result.error || result.failed) console.warn('Chưa lưu sẵn được hết nhạc: ' + (result.error || `${result.failed} tệp`));
+      scheduleWarm(WARM_RETRY_MS);
+    };
+    worker.postMessage({ type: 'WARM_AUDIO' }, [channel.port2]);
+  }
+  window.addEventListener('probably-stolen-ready', () => { gameRunning = true; scheduleWarm(WARM_DELAY_MS); });
+
+  window.ProbablyStolenAudio = Object.freeze({ match, create, urlFor });
+})();

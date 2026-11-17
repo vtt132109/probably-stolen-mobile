@@ -1,0 +1,120 @@
+(() => {
+  'use strict';
+  const key = 'probably-stolen-last-start-v1';
+  let current = null, lastWrite = 0;
+  let previous;
+  try { previous = JSON.parse(localStorage.getItem(key)); } catch (_) { /* Optional diagnostics. */ }
+  const panel = document.getElementById('startup-diagnostics');
+  const text = document.getElementById('startup-report');
+  const MiB = bytes => `${Math.round(bytes / 1048576)} MiB`;
+  // Release 12: a page that reached the game and then vanished without pagehide while visible
+  // was almost certainly killed by the system (on iPhone: out of memory).
+  const killed = report => !!report && typeof report === 'object' && !report.error && !report.clean &&
+    !report.hidden && report.release >= 12 && !!report.reachedGame;
+  function format(report) {
+    if (!report || typeof report !== 'object') return 'Chưa có lần mở game trước.';
+    return [
+      killed(report) ? 'Lần trước game bị trình duyệt tắt đột ngột (trên iPhone thường là do hết bộ nhớ).' : '',
+      `Bản: ${report.release || '?'}`,
+      `Bộ game: ${report.build || '?'}`,
+      `Lúc mở: ${report.started || '?'}`,
+      `Bước cuối: ${report.phase || '?'}`,
+      report.progress == null ? '' : `Tiến trình bước này: ${Math.round(report.progress * 100)}%`,
+      report.heapBytes ? `Vùng nhớ Unity: ${MiB(report.heapBytes)}` : '',
+      report.peakHeapBytes ? `Vùng nhớ Unity lớn nhất: ${MiB(report.peakHeapBytes)} sau ${report.heapGrows || 0} lần mở rộng` : '',
+      report.pendingHeapBytes ? `Đang xin mở rộng vùng nhớ lên: ${MiB(report.pendingHeapBytes)}` : '',
+      report.failedHeapBytes ? `Không mở rộng được vùng nhớ lên: ${MiB(report.failedHeapBytes)}` : '',
+      report.error ? `Lỗi: ${report.error}` : '',
+      `Trình duyệt: ${report.browser || '?'}`,
+    ].filter(Boolean).join('\n');
+  }
+  function persist(force = true) {
+    if (!current || (!force && Date.now() - lastWrite < 1000)) return;
+    lastWrite = Date.now();
+    try { localStorage.setItem(key, JSON.stringify(current)); } catch (_) { /* Gameplay does not depend on storage for diagnostics. */ }
+  }
+  text.textContent = format(previous);
+  panel.hidden = !previous;
+  if (killed(previous)) panel.open = true;
+
+  // Heap growth is journaled synchronously around the call, so a kill during a blocking
+  // scene load still leaves the size that was being requested.
+  const memoryPrototype = typeof WebAssembly === 'object' ? WebAssembly.Memory?.prototype : null;
+  const memoryGrow = memoryPrototype?.grow;
+  if (memoryGrow) memoryPrototype.grow = function (pages) {
+    if (!current) return memoryGrow.call(this, pages);
+    current.pendingHeapBytes = this.buffer.byteLength + pages * 65536;
+    persist();
+    try {
+      const result = memoryGrow.call(this, pages);
+      current.heapBytes = this.buffer.byteLength;
+      current.peakHeapBytes = Math.max(current.peakHeapBytes || 0, current.heapBytes);
+      current.heapGrows = (current.heapGrows || 0) + 1;
+      return result;
+    } catch (error) {
+      current.failedHeapBytes = current.pendingHeapBytes;
+      throw error;
+    } finally {
+      delete current.pendingHeapBytes;
+      persist();
+    }
+  };
+  window.addEventListener('pagehide', () => { if (current) { current.clean = true; persist(); } });
+  window.addEventListener('pageshow', event => {
+    if (!current || !event.persisted) return;
+    current.clean = false;
+    current.hidden = document.visibilityState === 'hidden';
+    persist();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!current) return;
+    current.hidden = document.visibilityState === 'hidden';
+    persist();
+  });
+  document.getElementById('copy-startup-report').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(text.textContent);
+      document.getElementById('copy-startup-status').textContent = 'Đã sao chép thông tin.';
+    } catch (_) { document.getElementById('copy-startup-status').textContent = 'Bạn có thể chọn và sao chép đoạn thông tin bên trên.'; }
+  });
+  function phase(name, progress = null) {
+    if (!current) return;
+    const changed = current.phase !== name;
+    current.phase = name;
+    current.progress = progress;
+    persist(changed || progress === 1);
+  }
+  window.ProbablyStolenStartup = Object.freeze({
+    phase,
+    begin(build) {
+      current = {release: 13, build, started: new Date().toISOString(), browser: navigator.userAgent, phase: 'Chuẩn bị khởi động',
+        hidden: document.visibilityState === 'hidden'};
+      persist();
+    },
+    fail(error) {
+      if (!current) return;
+      current.error = String(error?.message || error).slice(0, 1500);
+      persist();
+      text.textContent = format(current);
+      panel.hidden = false;
+      panel.open = true;
+    },
+    ready(player) {
+      current.reachedGame = true;
+      phase('Đã mở game');
+      const update = () => {
+        current.heapBytes = player.Module?.HEAPU8?.buffer.byteLength || 0;
+        persist();
+      };
+      update();
+      window.setInterval(update, 10000);
+    },
+  });
+  window.addEventListener('error', event => {
+    if (event.message) window.ProbablyStolenStartup.fail(event.error || event.message);
+  });
+  window.addEventListener('unhandledrejection', event => window.ProbablyStolenStartup.fail(event.reason));
+  document.getElementById('unity-canvas').addEventListener('webglcontextlost', () => {
+    window.ProbablyStolenStartup.fail('Trình duyệt mất kết nối với bộ xử lý đồ họa (WebGL context lost).');
+  });
+})();
