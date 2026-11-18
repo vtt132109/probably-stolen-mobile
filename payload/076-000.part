@@ -55,7 +55,7 @@
   }
   async function run() {
     const heap = window.unityInstance?.Module?.HEAPU8?.buffer?.byteLength || 0;
-    record = {release: 14, started: new Date().toISOString(), heapMiB: Math.round(heap / MiB), okMiB: 0, attemptMiB: 0,
+    record = {release: 15, started: new Date().toISOString(), heapMiB: Math.round(heap / MiB), okMiB: 0, attemptMiB: 0,
       outcome: 'running', hidden: document.visibilityState === 'hidden', browser: navigator.userAgent};
     if (!save(record)) return;
     try {
