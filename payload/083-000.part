@@ -79,3 +79,4 @@ html.desktop #orientation-tip { display: none; }
 .keyboard-help li { margin: .25rem 0; }
 kbd { font: inherit; font-size: .75rem; padding: 0 .3rem; border: 1px solid var(--edge); border-radius: 3px; color: var(--paper); }
 #cloud-choice p { white-space: pre-line; }
+#cloud-launch-status { white-space: pre-line; }

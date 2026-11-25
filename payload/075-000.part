@@ -40,7 +40,7 @@
       </div>
       <p class="hint touch-only">Xoay ngang iPhone để có thêm không gian thao tác.</p>
       <p class="hint desktop-only">Chơi bằng chuột và bàn phím. Phím O hiện/ẩn hướng dẫn điều khiển, phím K mở cài đặt trong game.</p>
-      <p class="hint">Bản 15.1 · Chơi trên máy tính, tự lưu save lên server</p>
+      <p class="hint">Bản 15.2 · Hiện save trên server ngay khi mở game</p>
       <details id="startup-diagnostics" hidden><summary>Thông tin mở game</summary><pre id="startup-report"></pre><button id="copy-startup-report" type="button">Sao chép thông tin</button><p id="copy-startup-status" role="status"></p></details>
     </div>
   </section>

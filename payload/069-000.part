@@ -293,4 +293,25 @@
     syncNow,
   });
   if (!endpoint) say('Chưa cấu hình server lưu save; save chỉ nằm trên máy này.');
+
+  // Release 15.2: before Play, show which save the server holds and whether this
+  // device matches it, so the player picks "Tải File Mới Nhất" with confidence.
+  async function showOnLaunch() {
+    if (!endpoint) return;
+    const show = text => { if (!started) { launchStatus.textContent = text; launchStatus.hidden = false; } };
+    show('Đang xem save trên server…');
+    const [head, local] = await Promise.all([
+      getHead().catch(error => ({error})),
+      readLocal().catch(() => null),
+    ]);
+    if (head?.error) {
+      show(`Chưa xem được save trên server: ${head.error.message}` + (local?.playable ? `\nMáy này: ${describe({summary: local.summary})}.` : ''));
+      return;
+    }
+    const lines = [head ? `Save trên server: ${describe(head)}.` : 'Server chưa có save.'];
+    if (local?.playable) lines.push(head && head.digest === local.digest ? 'Máy này: giống save trên server.' : `Máy này: ${describe({summary: local.summary})}.`);
+    if (head || local?.playable) lines.push('Vào game: Tải → “Tải File Mới Nhất” để chơi tiếp lần lưu cuối.');
+    show(lines.join('\n'));
+  }
+  showOnLaunch().catch(error => console.error('Cloud launch summary failed', error));
 })();

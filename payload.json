@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "09988b4ddc369d366f5fcf42",
+  "sourceVersion": "1eceaf95c5dcc0777d0f04f1",
   "files": [
     {
       "path": "Build/audio/06977a1a5931802841aa24e2825d128e.m4a",
@@ -1182,17 +1182,17 @@
     {
       "path": "cloud-save.js",
       "url": "cloud-save.js",
-      "transferBytes": 15538,
-      "responseBytes": 15538,
+      "transferBytes": 16777,
+      "responseBytes": 16777,
       "contentEncoding": null,
-      "sha256": "87d50d6a75e228849f9f7093f18c4a641b70cdc5de8b6fd3f4039a79c6ae1f74",
-      "integrity": "sha256-h9UNanXiKISfn3CT8YxKZBtwzcXei2/T9AOaecauH3Q=",
+      "sha256": "b72e4678cce40d4a98c882e5f8f8de0a64a41a622a27e00f7ba5708ea13b9fe1",
+      "integrity": "sha256-ty5GeMzkDUqYyILl+PjeCmSkGmIqJ+APe6VwjqE7n+E=",
       "required": true,
       "parts": [
         {
           "path": "payload/069-000.part",
-          "sha256": "87d50d6a75e228849f9f7093f18c4a641b70cdc5de8b6fd3f4039a79c6ae1f74",
-          "bytes": 15538
+          "sha256": "b72e4678cce40d4a98c882e5f8f8de0a64a41a622a27e00f7ba5708ea13b9fe1",
+          "bytes": 16777
         }
       ]
     },
@@ -1284,17 +1284,17 @@
     {
       "path": "index.html",
       "url": "index.html",
-      "transferBytes": 11920,
-      "responseBytes": 11920,
+      "transferBytes": 11913,
+      "responseBytes": 11913,
       "contentEncoding": null,
-      "sha256": "819614bfeb6c79e1c6906e349186206cbe03407665ad7d1a56490127f4223657",
-      "integrity": "sha256-gZYUv+tseeHGkG40kYYgbL4DQHZlrX0aVkkBJ/QiNlc=",
+      "sha256": "a0f682d706db69750cb04a6552fe5130d4b61704e2cd87aea99341f67ea20c86",
+      "integrity": "sha256-oPaC1wbbaXUMsEplUv5RMNS2FwTizYeuqZNB9n6iDIY=",
       "required": true,
       "parts": [
         {
           "path": "payload/075-000.part",
-          "sha256": "819614bfeb6c79e1c6906e349186206cbe03407665ad7d1a56490127f4223657",
-          "bytes": 11920
+          "sha256": "a0f682d706db69750cb04a6552fe5130d4b61704e2cd87aea99341f67ea20c86",
+          "bytes": 11913
         }
       ]
     },
@@ -1420,17 +1420,17 @@
     {
       "path": "shell.css",
       "url": "shell.css",
-      "transferBytes": 9486,
-      "responseBytes": 9486,
+      "transferBytes": 9534,
+      "responseBytes": 9534,
       "contentEncoding": null,
-      "sha256": "32abdd429dbf78f28a66060fcf9ed4eaf64a3da3a69074d92c510e8ab9797fcc",
-      "integrity": "sha256-MqvdQp2/ePKKZgYPz57U6vZKPaOmkHTZLFEOirl5f8w=",
+      "sha256": "c914e179bc36f852dce6ebea4664aaaf3c0a92cd6da27d8c3fbc3f4e3130a6c7",
+      "integrity": "sha256-yRThebw2+FLc5uvqRmSqrzwKks1ton2MP7w/TjEwpsc=",
       "required": true,
       "parts": [
         {
           "path": "payload/083-000.part",
-          "sha256": "32abdd429dbf78f28a66060fcf9ed4eaf64a3da3a69074d92c510e8ab9797fcc",
-          "bytes": 9486
+          "sha256": "c914e179bc36f852dce6ebea4664aaaf3c0a92cd6da27d8c3fbc3f4e3130a6c7",
+          "bytes": 9534
         }
       ]
     },
@@ -1457,13 +1457,13 @@
       "transferBytes": 5632,
       "responseBytes": 5632,
       "contentEncoding": null,
-      "sha256": "7b1f151cba160d6919e1075ef420d01466c049e9bd98b2e4a71e0dde47097895",
-      "integrity": "sha256-ex8VHLoWDWkZ4Qde9CDQFGbASem9mLLkpx4N3kcJeJU=",
+      "sha256": "17a6a5648f7ba01ce46885d38b421017b7e46cf845465d050045703d556da91e",
+      "integrity": "sha256-F6alZI97oBzkaIXTi0IQF7fkbPhFRl0FAEVwPVVtqR4=",
       "required": true,
       "parts": [
         {
           "path": "payload/085-000.part",
-          "sha256": "7b1f151cba160d6919e1075ef420d01466c049e9bd98b2e4a71e0dde47097895",
+          "sha256": "17a6a5648f7ba01ce46885d38b421017b7e46cf845465d050045703d556da91e",
           "bytes": 5632
         }
       ]
