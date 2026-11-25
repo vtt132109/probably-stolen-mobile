@@ -1,78 +1,141 @@
 (() => {
   'use strict';
-  const byId=id=>document.getElementById(id), saves=window.ProbablyStolenSaves;
-  const status=byId('backup-status'), input=byId('backup-file'), confirm=byId('backup-confirm');
-  let busy=false, started=false, ready=false, candidate=null, downloadUrl=null, downloadFile=null;
-  const root=saves.storageRoot(location.href);
-  function buttons() {
-    byId('backup-export').disabled=busy || (started && !ready);
-    input.disabled=busy || started || !navigator.locks;
-    confirm.disabled=busy || started;
-    byId('backup-cancel').disabled=busy;
+  const bar = document.getElementById('mobile-controls');
+  const canvas = document.getElementById('unity-canvas');
+  const enabled = document.getElementById('touch-controls-enabled');
+  const active = new Map();
+  const nativePointers = new Set();
+  let nativeMouseHeld = false;
+  let bridgeReady = false;
+  // Keep the full game area clear. Extra actions remain available on demand.
+  enabled.checked = false;
+
+  const connected = () => bridgeReady && typeof window.unityInstance?.SendMessage === 'function';
+  function send(method, action = '') {
+    if (connected()) window.unityInstance.SendMessage('ProbablyStolenMobileInput', method, action);
   }
-  function clearCandidate() { candidate=null;input.value='';byId('backup-preview').hidden=true; }
-  async function operate(action) {
-    if(busy) return;
-    busy=true;buttons();
-    try { await action(); }
-    catch(error) { status.textContent=error.message || 'Chưa xử lý được bản sao. Hãy thử lại.'; }
-    finally { busy=false;buttons(); }
-  }
-  window.ProbablyStolenSaveUI=Object.freeze({async prepareToPlay() {
-    if(busy) throw new Error('Hãy đợi thao tác sao lưu hoàn tất rồi bấm Chơi.');
-    busy=true;buttons();
-    try {
-      if(navigator.locks) await saves.acquireSession();
-      started=true;clearCandidate();
-      byId('backup-import-hint').textContent='Để nhập bản sao, đóng rồi mở lại ứng dụng và chọn file trước khi bấm Chơi.';
-    } finally {busy=false;buttons();}
-  }});
-  window.addEventListener('probably-stolen-ready',()=>{ready=true;buttons();});
-  byId('backup-export').addEventListener('click',()=>operate(async()=>{
-    byId('backup-download').hidden=true;byId('backup-share').hidden=true;
-    status.textContent='Đang chuẩn bị bản sao điểm lưu gần nhất…';
-    await saves.acquireSession();
-    if(started) {
-      const result=await window.ProbablyStolenPWA.requestCheckpoint('backup-export');
-      if(!result.supported) throw new Error('Game chưa sẵn sàng đồng bộ save.');
+  function renderPressed() {
+    for (const button of bar.querySelectorAll('[data-game-action]')) {
+      button.setAttribute('aria-pressed', String([...active.values()].includes(button.dataset.gameAction)));
     }
-    const files=await saves.readFiles(root);
-    if(!files.some(file=>/^save_\d+\.es3$/.test(file.name))) throw new Error('Chưa có điểm lưu để sao lưu. Hãy tạo game hoặc hoàn thành một ngày trước.');
-    const manifest=await fetch('pwa-build.json').then(response=>response.ok?response.json():null).catch(()=>null);
-    const archive=await saves.createArchive(files,manifest?.version || 'unknown');
-    downloadFile=new File([JSON.stringify(archive)],'probably-stolen-'+new Date().toISOString().slice(0,10)+'.pssave.json',{type:'application/json'});
-    if(downloadUrl) URL.revokeObjectURL(downloadUrl);
-    downloadUrl=URL.createObjectURL(downloadFile);
-    const link=byId('backup-download');link.href=downloadUrl;link.download=downloadFile.name;link.hidden=false;
-    byId('backup-share').hidden=!(navigator.canShare?.({files:[downloadFile]}));
-    status.textContent=`Đã chuẩn bị ${files.length} file save. Bấm “Lưu bản sao” để giữ file trên thiết bị.`;
-  }));
-  byId('backup-share').addEventListener('click',async()=>{
-    try { await navigator.share({files:[downloadFile],title:'Probably Stolen — bản sao save'}); }
-    catch(error) { if(error.name!=='AbortError') status.textContent='Chưa chia sẻ được file. Bạn có thể bấm Lưu bản sao.'; }
+  }
+  function press(source, action) {
+    if (active.has(source)) return;
+    const alreadyHeld = [...active.values()].includes(action);
+    active.set(source, action);
+    if (!alreadyHeld) send('PressAction', action);
+    renderPressed();
+  }
+  function release(source) {
+    const action = active.get(source);
+    if (!action) return;
+    active.delete(source);
+    if (![...active.values()].includes(action)) send('ReleaseAction', action);
+    renderPressed();
+  }
+  function releaseAll() {
+    active.clear();
+    nativePointers.clear();
+    nativeMouseHeld = false;
+    send('ReleaseAll');
+    renderPressed();
+  }
+  function updateControls() {
+    const visible = enabled.checked && connected();
+    if (!visible && active.size) releaseAll();
+    bar.hidden = !visible;
+    document.body.classList.toggle('has-mobile-controls', visible);
+    window.dispatchEvent(new Event('resize'));
+  }
+  window.ProbablyStolenInput = Object.freeze({
+    // Called by the real C#/.jslib bridge; loading the HTML alone does not enable controls.
+    ready() { bridgeReady = true; updateControls(); },
   });
-  input.addEventListener('change',()=>{
-    const file=input.files?.[0];clearCandidate();if(!file) return;
-    operate(async()=>{
-      if(started) throw new Error('Hãy mở lại ứng dụng để nhập bản sao trước khi bấm Chơi.');
-      if(file.size>saves.MAX_TEXT) throw new Error('Bản sao vượt giới hạn 48 MB.');
-      await saves.acquireSession();
-      status.textContent='Đang kiểm tra bản sao…';
-      const text=await file.text(), parsed=await saves.validateArchive(text);
-      candidate=text;
-      byId('backup-preview-text').textContent=`Bản sao có ${parsed.files.length} file (${Math.ceil(parsed.totalBytes/1024)} KB). Nhập sẽ thay thế toàn bộ save và lịch sử save trên địa chỉ này. Hãy xuất bản sao hiện tại trước nếu muốn giữ lại.`;
-      byId('backup-preview').hidden=false;
-      status.textContent='File hợp lệ. Chưa thay đổi save hiện có.';
-    });
-  });
-  confirm.addEventListener('click',()=>operate(async()=>{
-    if(started || !candidate) throw new Error('Hãy chọn lại bản sao trước khi mở game.');
-    await saves.acquireSession();
-    await saves.replaceArchive(root,candidate);
-    clearCandidate();
-    status.textContent='Đã nhập bản sao. Bấm Chơi, rồi chọn Load Game để tiếp tục.';
-  }));
-  byId('backup-cancel').addEventListener('click',()=>{clearCandidate();status.textContent='Đã hủy nhập; save hiện có được giữ nguyên.';});
-  if(!navigator.locks) byId('backup-import-hint').textContent='Cần cập nhật trình duyệt/iOS để dùng sao lưu và khôi phục.';
-  buttons();
+  window.addEventListener('probably-stolen-ready', updateControls);
+  window.addEventListener('probably-stolen-visibility', event => { if (event.detail.hidden) releaseAll(); });
+  window.addEventListener('blur', releaseAll);
+  window.addEventListener('pagehide', releaseAll);
+  enabled.addEventListener('change', updateControls);
+
+  const inside = event => !bar.hidden && event.target instanceof Node && bar.contains(event.target);
+  const buttonFor = event => event.target instanceof Element ? event.target.closest('[data-game-action]') : null;
+  function consume(event) {
+    if (event.cancelable) event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+  // Register before the Unity loader. A toolbar touch must not become a Unity primary
+  // click, move the native mouse position, or add a simulated second mouse button.
+  window.addEventListener('pointerdown', event => {
+    if (!inside(event)) {
+      if (event.target.id === 'unity-canvas') {
+        nativePointers.add(event.pointerId);
+        if (event.pointerType === 'mouse') nativeMouseHeld = true;
+      }
+      return;
+    }
+    const button = buttonFor(event);
+    if (button && event.button === 0) {
+      press(`pointer:${event.pointerId}`, button.dataset.gameAction);
+      button.setPointerCapture(event.pointerId);
+    }
+    consume(event);
+  }, { capture: true, passive: false });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    window.addEventListener(type, event => {
+      if (nativePointers.delete(event.pointerId)) return;
+      const source = `pointer:${event.pointerId}`;
+      if (!inside(event) && !active.has(source)) return;
+      release(source);
+      consume(event);
+    }, { capture: true, passive: false });
+  }
+  window.addEventListener('pointermove', event => {
+    if (nativePointers.has(event.pointerId)) return;
+    if (inside(event) || active.has(`pointer:${event.pointerId}`)) consume(event);
+  }, { capture: true, passive: false });
+  for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mousemove', 'mouseup', 'dblclick', 'contextmenu']) {
+    window.addEventListener(type, event => {
+      if (type.startsWith('touch') && event.target === canvas) {
+        // A native TouchEvent lists touches on the whole document, even when the
+        // second touch's own event was stopped at our toolbar. Unity simulates
+        // mouse buttons from touch count, so give its listener canvas touches only.
+        // Keep the original trusted event and Touch objects; do not dispatch events.
+        for (const property of ['touches', 'targetTouches', 'changedTouches']) {
+          const original = event[property];
+          const filtered = [...original].filter(touch => touch.target === canvas);
+          if (filtered.length !== original.length) {
+            Object.defineProperty(filtered, 'item', { value: index => filtered[index] || null });
+            Object.defineProperty(event, property, { configurable: true, value: filtered });
+          }
+        }
+        return;
+      }
+      // A native mouse drag starting on the canvas must receive its release even
+      // when its pointer ends over the bar. Toolbar-owned presses are separate.
+      if (nativeMouseHeld && ['mousedown', 'mousemove', 'mouseup'].includes(type)) {
+        if (type === 'mouseup') nativeMouseHeld = false;
+        return;
+      }
+      if (inside(event)) consume(event);
+    }, { capture: true, passive: false });
+  }
+  window.addEventListener('click', event => {
+    if (!inside(event)) return;
+    const button = buttonFor(event);
+    // Assistive technology may invoke click directly without pointer/key events.
+    if (button && event.detail === 0) send('PulseAction', button.dataset.gameAction);
+    consume(event);
+  }, true);
+  window.addEventListener('keydown', event => {
+    if (!inside(event) || !['Enter', 'Space'].includes(event.code)) return;
+    const button = buttonFor(event);
+    if (button) press(`key:${event.code}`, button.dataset.gameAction);
+    consume(event);
+  }, true);
+  window.addEventListener('keyup', event => {
+    const source = `key:${event.code}`;
+    if (!active.has(source)) return;
+    release(source);
+    consume(event);
+  }, true);
 })();

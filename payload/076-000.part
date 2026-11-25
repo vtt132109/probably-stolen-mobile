@@ -1,83 +1,16 @@
-// Release 13 diagnostic: how much memory is still free while the real game sits at its
-// welcome/menu screen. Opt-in only (index.html#memtest, a hash so the
-// service worker still serves the page offline). Fifteen seconds after the game is
-// ready, it allocates incompressible 16 MiB blocks until the system kills the page; every
-// attempt is written to localStorage before the allocation, so the next normal launch can
-// report the headroom in the startup panel. Never runs without the flag and never touches saves.
-(() => {
-  'use strict';
-  const KEY = 'probably-stolen-headroom-v1';
-  const STEP_MIB = 16, CAP_MIB = 4096, START_DELAY_MS = 15000;
-  const MiB = 1048576;
-  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (_) { return null; } };
-  const save = record => { try { localStorage.setItem(KEY, JSON.stringify(record)); return true; } catch (_) { return false; } };
-
-  function describe(record) {
-    const outcome = record.outcome === 'killed' ? `BỊ TẮT khi xin thêm lên ${record.attemptMiB} MiB (đã giữ thêm được ${record.okMiB} MiB)`
-      : record.outcome === 'interrupted' ? `Dừng vì trang bị ẩn ở ${record.okMiB} MiB (không phải giới hạn, hãy đo lại)`
-      : record.outcome === 'refused' ? `Trình duyệt từ chối ở ${record.attemptMiB} MiB: ${record.error}`
-      : record.outcome === 'cap' ? `Giữ thêm được ${record.okMiB} MiB mà không bị tắt`
-      : `Đang đo… ${record.okMiB} MiB`;
-    return [`Đo khoảng trống bộ nhớ trong game (bản ${record.release}, ${record.started})`,
-      `Vùng nhớ Unity lúc bắt đầu: ${record.heapMiB} MiB`, `Kết quả: ${outcome}`].join('\n');
-  }
-
-  // A run still marked "running" means the page died while allocating: that is the measurement.
-  const previous = load();
-  if (previous?.outcome === 'running') {
-    previous.outcome = previous.hidden ? 'interrupted' : 'killed';
-    save(previous);
-  }
-  if (previous) {
-    const panel = document.getElementById('startup-diagnostics');
-    const text = document.getElementById('startup-report');
-    if (panel && text) {
-      text.textContent = (text.textContent ? text.textContent + '\n\n' : '') + describe(previous);
-      panel.hidden = false;
-      if (previous.outcome === 'killed') panel.open = true;
-    }
-  }
-
-  if (location.hash !== '#memtest') return;
-  // Drop the flag at once, so the reload Safari does after a kill opens the game normally.
-  try { history.replaceState(null, '', location.pathname + location.search); } catch (_) { /* Best effort. */ }
-  let record = null;
-  const held = [];
-  document.addEventListener('visibilitychange', () => {
-    if (record && document.visibilityState === 'hidden') { record.hidden = true; save(record); }
-  });
-  let seed = 0x2545f491;
-  function fill(bytes) {
-    const words = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.length >>> 2);
-    let x = seed;
-    for (let i = 0; i < words.length; i++) { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; words[i] = x; }
-    seed = x >>> 0 || 1;
-  }
-  async function run() {
-    const heap = window.unityInstance?.Module?.HEAPU8?.buffer?.byteLength || 0;
-    record = {release: 15, started: new Date().toISOString(), heapMiB: Math.round(heap / MiB), okMiB: 0, attemptMiB: 0,
-      outcome: 'running', hidden: document.visibilityState === 'hidden', browser: navigator.userAgent};
-    if (!save(record)) return;
-    try {
-      while (record.okMiB + STEP_MIB <= CAP_MIB) {
-        if (record.hidden) { record.outcome = 'interrupted'; break; }
-        record.attemptMiB = record.okMiB + STEP_MIB;
-        save(record); // Before the allocation: survives a kill.
-        const block = new Uint8Array(STEP_MIB * MiB);
-        fill(block);
-        held.push(block);
-        record.okMiB += STEP_MIB;
-        save(record);
-        await new Promise(resolve => setTimeout(resolve, 150));
-      }
-      if (record.outcome === 'running') record.outcome = 'cap';
-    } catch (error) {
-      record.outcome = 'refused';
-      record.error = `${error?.name || 'Error'}: ${error?.message || error}`.slice(0, 200);
-    } finally {
-      held.length = 0;
-      save(record);
-    }
-  }
-  window.addEventListener('probably-stolen-ready', () => setTimeout(run, START_DELAY_MS));
-})();
+{
+  "id": "./",
+  "name": "Probably Stolen — iPhone",
+  "short_name": "Probably Stolen",
+  "description": "Probably Stolen mobile development build.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#111714",
+  "theme_color": "#111714",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
